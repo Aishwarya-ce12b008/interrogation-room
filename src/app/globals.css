@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 90%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 90%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 90%;
+    --primary: 0 0% 90%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 90%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 50%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply text-foreground;
+    background: 
+      /* Harsh overhead spotlight */
+      radial-gradient(
+        ellipse 60% 40% at 50% -10%,
+        rgba(255, 248, 230, 0.07) 0%,
+        rgba(255, 248, 230, 0.03) 30%,
+        transparent 70%
+      ),
+      /* Secondary dim light from corner */
+      radial-gradient(
+        ellipse 50% 50% at 80% 20%,
+        rgba(255, 200, 150, 0.04) 0%,
+        transparent 50%
+      ),
+      /* Vignette */
+      radial-gradient(
+        ellipse 80% 80% at 50% 50%,
+        transparent 20%,
+        rgba(0, 0, 0, 0.4) 100%
+      ),
+      /* Base dark */
+      linear-gradient(
+        180deg,
+        hsl(0, 0%, 6%) 0%,
+        hsl(0, 0%, 4%) 50%,
+        hsl(0, 0%, 3%) 100%
+      );
+    min-height: 100vh;
+  }
+}
+
+/* Subtle grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  z-index: 1;
+}
+
+body > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Animations */
+@keyframes subtle-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.97; }
+  94% { opacity: 1; }
+  96% { opacity: 0.98; }
+  97% { opacity: 1; }
+}
+
+body {
+  animation: subtle-flicker 8s ease-in-out infinite;
+}
+
+/* Swinging lamp */
+@keyframes swing {
+  0%, 100% { transform: translateX(-50%) rotate(-3deg); }
+  50% { transform: translateX(-50%) rotate(3deg); }
+}
+
+@keyframes swing-light {
+  0%, 100% { transform: translateX(-50%) translateX(-20px); opacity: 0.8; }
+  50% { transform: translateX(-50%) translateX(20px); opacity: 1; }
+}
+
+.animate-swing {
+  animation: swing 4s ease-in-out infinite;
+}
+
+.animate-swing-light {
+  animation: swing-light 4s ease-in-out infinite;
+}
+
+/* Police tape scroll */
+@keyframes scroll-tape {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-scroll-tape {
+  animation: scroll-tape 20s linear infinite;
+}
+
+/* Stamp effect */
+@keyframes stamp {
+  0% { transform: scale(2) rotate(-10deg); opacity: 0; }
+  50% { transform: scale(1.1) rotate(-2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-2deg); opacity: 1; }
+}
+
+.animate-stamp {
+  animation: stamp 0.5s ease-out forwards;
+}
+
+/* Slow pulse */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}
+
+/* Ping slow */
+@keyframes ping-slow {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 2s ease-out infinite;
+}
+
+/* Heartbeat line */
+@keyframes heartbeat {
+  0%, 100% { stroke-dashoffset: 0; opacity: 0.4; }
+  50% { stroke-dashoffset: -20; opacity: 0.8; }
+}
+
+.animate-heartbeat {
+  stroke-dasharray: 400;
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+/* Radial gradient utility */
+.bg-gradient-radial {
+  background: radial-gradient(circle, var(--tw-gradient-stops));
+}
