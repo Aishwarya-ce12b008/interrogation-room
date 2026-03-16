@@ -48,7 +48,8 @@ export interface RAGChunkInfo {
   id: string;
   score: number;
   category: string;
-  preview: string; // First 100 chars of text
+  preview: string;
+  fullText?: string;
 }
 
 export interface ToolCall {
@@ -70,10 +71,11 @@ export interface MessageDebugInfo {
   // Token breakdown
   tokenUsage?: TokenUsage;
   tokenBreakdown?: {
-    systemPromptTokens: number;  // Base system prompt (constant)
-    ragContextTokens: number;    // RAG injection (changes per turn)
-    conversationTokens: number;  // History (grows each turn)
-    completionTokens: number;    // Response
+    basePromptTokens: number;      // Base system prompt (constant per agent)
+    suspectContextTokens: number;  // Suspect profile injected into system prompt
+    ragContextTokens: number;      // RAG chunks injected into system prompt
+    conversationTokens: number;    // Conversation history (grows each turn)
+    completionTokens: number;      // LLM output
   };
   
   // Conversation summary (not full content)
@@ -97,6 +99,14 @@ export interface MessageDebugInfo {
   promptSent?: string;
 }
 
+export interface PipelineStep {
+  id: string;
+  label: string;
+  status: "running" | "done" | "error" | "skipped";
+  detail?: string;
+  durationMs?: number;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -105,6 +115,8 @@ export interface Message {
   isTransition?: boolean;
   transitionType?: "exit" | "entrance";
   debug?: MessageDebugInfo;
+  steps?: PipelineStep[];
+  transitions?: string[];
 }
 
 export interface AgentConfig {

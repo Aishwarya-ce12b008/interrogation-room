@@ -21,8 +21,8 @@ export const suspects: Suspect[] = [
       { crime: "Petty Theft", year: 2019, outcome: "6 months probation", details: "Shoplifting electronics worth ₹15,000" }
     ],
     associates: [
-      { name: "Deepak Verma", relationship: "Colleague", criminalRecord: false, notes: "Also works in accounts department" },
-      { name: "Sanjay Mehta", relationship: "Childhood friend", criminalRecord: true, notes: "Convicted of fraud in 2017" }
+      { name: "Deepak Verma", relationship: "Colleague", criminalRecord: false, notes: "Also works in accounts department", vulnerability: "Knows about the invoices, could be charged as accessory" },
+      { name: "Sanjay Mehta", relationship: "Childhood friend", criminalRecord: true, notes: "Convicted of fraud in 2017", vulnerability: "Already has fraud conviction, any new association means jail" }
     ],
     currentCase: {
       crime: "Embezzlement",
@@ -59,7 +59,7 @@ export const suspects: Suspect[] = [
     dependents: "Mother (Kamla, 62, diabetic)",
     priors: [],
     associates: [
-      { name: "Rohit Malhotra", relationship: "Ex-boyfriend", criminalRecord: false, notes: "Branch manager, ended relationship 6 months ago" }
+      { name: "Rohit Malhotra", relationship: "Ex-boyfriend", criminalRecord: false, notes: "Branch manager, ended relationship 6 months ago", vulnerability: "As branch manager, negligence charges possible for oversight failure" }
     ],
     currentCase: {
       crime: "Theft",
@@ -99,8 +99,8 @@ export const suspects: Suspect[] = [
       { crime: "Tax Evasion", year: 2018, outcome: "₹5,00,000 fine", details: "Underreported income by ₹40L" }
     ],
     associates: [
-      { name: "Pappu Yadav", relationship: "Fixer", criminalRecord: true, notes: "Known for 'managing' legal troubles" },
-      { name: "DCP Rathore", relationship: "Connection", criminalRecord: false, notes: "Allegedly receives monthly payments" }
+      { name: "Pappu Yadav", relationship: "Fixer", criminalRecord: true, notes: "Known for 'managing' legal troubles", vulnerability: "Multiple warrants pending, bringing him in would be easy" },
+      { name: "DCP Rathore", relationship: "Connection", criminalRecord: false, notes: "Allegedly receives monthly payments", vulnerability: "Corruption investigation would end his career" }
     ],
     currentCase: {
       crime: "Hit and Run",
@@ -116,7 +116,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "digital", description: "CCTV", strength: "strong", details: "Traffic camera shows his car 500m from accident at 11:43 PM" }
       ],
       maxSentence: "10 years if victim dies (304A IPC)",
-      minSentence: "2 years + compensation"
+      minSentence: "2 years + compensation",
+      victimImpact: {
+        emotional: "Arun Patel, 67, a retired teacher who spent his life educating children, now lies in ICU unable to recognize his own grandchildren",
+        financial: "Family has spent ₹8,00,000 on ICU bills so far. His pension was the family's only income. Wife now dependent on neighbors for food",
+        family: "His wife hasn't left the hospital in 2 weeks. Their son flew back from Dubai, losing his job. Grandchildren keep asking when Nana is coming home"
+      }
     },
     personality: "Arrogant, entitled, thinks money can fix anything",
     weakness: "Business reputation, sons' future, press coverage",
@@ -174,7 +179,7 @@ export const suspects: Suspect[] = [
     dependents: "Son (12), lives with her",
     priors: [],
     associates: [
-      { name: "Dr. Suresh Patil", relationship: "Accomplice", criminalRecord: false, notes: "Provided fake medical certificates" }
+      { name: "Dr. Suresh Patil", relationship: "Accomplice", criminalRecord: false, notes: "Provided fake medical certificates", vulnerability: "Already confessed, medical license at stake" }
     ],
     currentCase: {
       crime: "Insurance Fraud",
@@ -227,7 +232,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "digital", description: "HR complaints", strength: "moderate", details: "3 harassment complaints filed by Meera against Suresh in past year - all marked 'inconclusive'" }
       ],
       maxSentence: "3 years (Section 324 IPC)",
-      minSentence: "Fine + compensation"
+      minSentence: "Fine + compensation",
+      victimImpact: {
+        emotional: "Suresh Rao, 35, says he can't sleep without seeing scissors coming at him. Diagnosed with PTSD. Afraid to return to office",
+        financial: "₹1,50,000 in medical bills. Lost 3 weeks of work. May need counseling for months",
+        family: "His wife is 7 months pregnant. She had a panic attack when she saw his injuries. Their first child will be born to a father afraid of his own workplace"
+      }
     },
     personality: "Angry, defensive, feels completely justified",
     weakness: "The harassment she endured - she wants it acknowledged",
@@ -266,7 +276,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "testimony", description: "Victim statement", strength: "strong", details: "Irfan gave statement from hospital bed - Rakesh demanded ₹500, attacked when refused" }
       ],
       maxSentence: "7 years (Section 326 IPC)",
-      minSentence: "3 years"
+      minSentence: "3 years",
+      victimImpact: {
+        emotional: "Mohammad Irfan, 52, a shopkeeper who's served the neighborhood for 25 years. Now flinches when anyone raises their voice. Can't sleep without nightmares",
+        financial: "Shop closed for 3 weeks. ₹2,00,000 in hospital bills. Lost regular customers who are afraid to come back",
+        family: "His 14-year-old son had to drop out of school to run the shop. Wife hasn't stopped crying since the attack"
+      }
     },
     personality: "Aggressive, short fuse, no remorse visible",
     weakness: "His mother - she's been crying since arrest",
@@ -301,7 +316,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "document", description: "Rent demands", strength: "moderate", details: "Landlord had threatened eviction, was demanding 'other payment' according to neighbors" }
       ],
       maxSentence: "Life imprisonment (Section 302)",
-      minSentence: "7 years (if provocation proven - Section 304)"
+      minSentence: "7 years (if provocation proven - Section 304)",
+      victimImpact: {
+        emotional: "Ramesh Prasad was killed by a sickle. His last moments were of terror and pain",
+        financial: "His family depended on rental income. Property now tied up in legal proceedings",
+        family: "His elderly mother collapsed when she heard. His children are demanding maximum punishment"
+      }
     },
     personality: "Quiet, resigned, shows no regret",
     weakness: "Her children - terrified for their future",
@@ -337,7 +357,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "document", description: "Delivery pressure", strength: "moderate", details: "App records show multiple 'late' warnings, pay cuts for slow deliveries" }
       ],
       maxSentence: "10 years (Section 304)",
-      minSentence: "2 years"
+      minSentence: "2 years",
+      victimImpact: {
+        emotional: "Ganesh Sawant, 22, was cycling to his morning college class. He died on the road, alone, before the ambulance arrived",
+        financial: "His parents took a ₹10,00,000 education loan for his engineering degree. He was in final year, about to start earning",
+        family: "His mother hasn't spoken since identifying the body. His father, an autorickshaw driver, can't work — just sits at the accident spot every morning"
+      }
     },
     personality: "Devastated, keeps crying, clearly not a criminal",
     weakness: "Guilt is eating him alive - he's suicidal",
@@ -374,7 +399,12 @@ export const suspects: Suspect[] = [
         { id: "E3", type: "testimony", description: "Accomplice", strength: "strong", details: "Co-accused Raju confessed, says Pandey planned it, split was 60-40" }
       ],
       maxSentence: "10 years (Robbery with hurt)",
-      minSentence: "5 years"
+      minSentence: "5 years",
+      victimImpact: {
+        emotional: "James Morrison, 28, came to India to experience the culture. Left with a broken nose and fear of the country he once loved",
+        financial: "Lost ₹80,000 cash, camera worth ₹1,50,000, phone worth ₹90,000. Trip ruined, no travel insurance",
+        family: "His parents in Australia are demanding action through the embassy. This is becoming an international incident"
+      }
     },
     personality: "Smooth talker, denies everything, plays the holy man",
     weakness: "His reputation in the religious community",
@@ -416,7 +446,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "testimony", description: "Victim", strength: "strong", details: "Balwinder gave statement - he came from wrong side, she had no time to react" }
       ],
       maxSentence: "10 years (if permanent disability proven)",
-      minSentence: "2 years"
+      minSentence: "2 years",
+      victimImpact: {
+        emotional: "Balwinder Kaur, 40, a teacher beloved by her students. May never walk again. Lies in ICU staring at the ceiling, unable to feel her legs",
+        financial: "₹12,00,000 in hospital bills and counting. She was the sole earner — husband is disabled. School has stopped her salary",
+        family: "Her 16-year-old daughter bathes her mother in the hospital. Her disabled husband can't visit because the hospital has no wheelchair ramp"
+      }
     },
     personality: "Entitled rich kid, thinks dad's money will fix it",
     weakness: "His father is a known businessman - reputation matters",
@@ -451,7 +486,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "document", description: "Service records", strength: "strong", details: "No brake service in 8 months despite requirements" }
       ],
       maxSentence: "10 years (causing death by negligence)",
-      minSentence: "3 years"
+      minSentence: "3 years",
+      victimImpact: {
+        emotional: "Three people dead. The auto driver was 28, supporting his parents. One passenger was a mother of two. The other was a college student going to an exam",
+        financial: "Three families destroyed financially. Combined dependents: 7 children, 4 elderly parents. Funeral costs alone are ₹3,00,000",
+        family: "The auto driver's wife is 6 months pregnant — she'll raise the child alone. The college student's twin brother hasn't spoken since the funeral"
+      }
     },
     personality: "Broken man, can't stop crying",
     weakness: "He's not a criminal - just cut corners to save money",
@@ -477,7 +517,7 @@ export const suspects: Suspect[] = [
       { crime: "Drug Possession", year: 2022, outcome: "6 months", details: "Small quantity" }
     ],
     associates: [
-      { name: "Johny Surat", relationship: "Supplier", criminalRecord: true, notes: "Major dealer, still at large" },
+      { name: "Johny Surat", relationship: "Supplier", criminalRecord: true, notes: "Major dealer, still at large", vulnerability: "Has ₹50 lakh bounty, giving his location means witness protection for Bunty" },
       { name: "Local network", relationship: "Distribution", criminalRecord: true, notes: "5-6 small pushers under him" }
     ],
     currentCase: {
@@ -514,7 +554,7 @@ export const suspects: Suspect[] = [
     maritalStatus: "Single",
     priors: [],
     associates: [
-      { name: "Mark (Russian)", relationship: "Boyfriend", criminalRecord: true, notes: "Known drug supplier to tourists, currently absconding" }
+      { name: "Mark (Russian)", relationship: "Boyfriend", criminalRecord: true, notes: "Known drug supplier to tourists, currently absconding", vulnerability: "Absconding, Interpol alert — her testimony is the only way to find him" }
     ],
     currentCase: {
       crime: "Drug Peddling",
@@ -571,7 +611,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "testimony", description: "Daughter's statement", strength: "strong", details: "Pooja confirms abuse, says father threatened to kill mother" }
       ],
       maxSentence: "3 years (DV Act) + stalking charges",
-      minSentence: "1 year + permanent restraining order"
+      minSentence: "1 year + permanent restraining order",
+      victimImpact: {
+        emotional: "Mangala has been beaten for 15 years. She flinches when any man raises his hand. Daughter Pooja has nightmares every night",
+        financial: "Mangala has no income, no skills, no savings. Everything is in his name. She and Pooja survive on her parents' pension",
+        family: "Pooja dropped out of college to protect her mother. She sleeps with a cricket bat under her pillow. Their 17-year-old son is torn between parents"
+      }
     },
     personality: "Alternates between rage and self-pity, blames wife",
     weakness: "Son still talks to him - doesn't want to lose that too",
@@ -605,7 +650,12 @@ export const suspects: Suspect[] = [
         { id: "E4", type: "testimony", description: "Neighbor", strength: "moderate", details: "Heard frequent shouting, Neha crying, mother-in-law's taunts" }
       ],
       maxSentence: "10 years (304B IPC - Dowry death)",
-      minSentence: "7 years (minimum under 304B)"
+      minSentence: "7 years (minimum under 304B)",
+      victimImpact: {
+        emotional: "Neha Saxena, 25, wrote in her suicide note: 'I tried everything. They won't stop. I can't breathe in this house.' She hanged herself in the bathroom",
+        financial: "Neha's parents spent ₹15,00,000 on the wedding plus ₹10,00,000 in dowry demands after marriage. Now they're spending on lawyers instead of their retirement",
+        family: "Neha's mother hasn't eaten in 4 days. Her father keeps reading the suicide note over and over. They had one child. Now they have none"
+      }
     },
     personality: "Indignant, denies everything, plays victim herself",
     weakness: "Her son is also charged - she'll do anything to save him",
@@ -697,7 +747,7 @@ export const suspects: Suspect[] = [
     maritalStatus: "Single",
     priors: [],
     associates: [
-      { name: "College friends", relationship: "Co-accused", criminalRecord: false, notes: "3 others also arrested" }
+      { name: "College friends", relationship: "Co-accused", criminalRecord: false, notes: "3 others also arrested", vulnerability: "3 co-accused already arrested, they're talking — whoever cooperates first gets the best deal" }
     ],
     currentCase: {
       crime: "Exam Paper Leak",

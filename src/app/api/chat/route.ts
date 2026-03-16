@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
+import { config as dotenvConfig } from "dotenv";
+import path from "path";
 import OpenAI from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
+
+// Force .env.local to override any system env vars
+dotenvConfig({ path: path.resolve(process.cwd(), ".env.local"), override: true });
 import {
   AgentId,
   AgentResponse,
@@ -16,7 +21,9 @@ import {
 import {
   Suspect,
   getSuspectById,
-  generateSuspectContext,
+  generateBasicSuspectContext,
+  getToolsForAgent,
+  executeTool,
 } from "@/lib/database";
 
 export const dynamic = "force-dynamic";
@@ -149,13 +156,30 @@ function sseEvent(type: string, data: Record<string, unknown>): string {
   return `data: ${JSON.stringify({ type, ...data })}\n\n`;
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  search_knowledge_base: "Searching knowledge base",
+  check_evidence: "Checking evidence",
+  check_criminal_history: "Checking criminal history",
+  check_associates: "Checking associates",
+  verify_alibi: "Verifying alibi",
+  calculate_sentence: "Calculating sentence",
+  // Goody-exclusive
+  offer_deal: "Preparing cooperation deal",
+  share_similar_case: "Finding similar case",
+  offer_comfort: "Looking up support resources",
+  // Baddy-exclusive
+  threaten_arrest_associate: "Pulling associate file",
+  read_victim_impact: "Reading victim impact statement",
+  show_time_pressure: "Generating time pressure",
+};
+
 // NON-STREAMING call - just to get the decision (action field)
 async function callAgentForDecision(
   openai: OpenAI,
   messages: ChatMessage[],
   agent: AgentId,
-  ragContext: string = "",
-  ragChunks: RAGChunkInfo[] = [],
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  encoder: TextEncoder,
   suspect?: Suspect,
   toolCalls: ToolCall[] = []
 ): Promise<{ response: AgentResponse; tokenUsage: TokenUsage; debug: MessageDebugInfo }> {
@@ -168,41 +192,149 @@ async function callAgentForDecision(
   const lastUserMsg = messages.filter(m => m.role === "user").slice(-1)[0];
   const contextCount = messages.length;
   const hasSuspect = !!suspect;
-  const promptSummary = `Agent: ${agent} | Context: ${contextCount} msgs | RAG: ${ragContext ? "yes" : "no"} | Suspect: ${hasSuspect ? suspect.id : "none"} | Last user: "${lastUserMsg?.content?.slice(0, 50)}${(lastUserMsg?.content?.length || 0) > 50 ? '...' : ''}"`;
+  const promptSummary = `Agent: ${agent} | Context: ${contextCount} msgs | Suspect: ${hasSuspect ? suspect.id : "none"} | Last user: "${lastUserMsg?.content?.slice(0, 50)}${(lastUserMsg?.content?.length || 0) > 50 ? '...' : ''}"`;
   const conversationHistory = formattedMessages.map(m => ({ role: m.role, content: m.content }));
 
-  // Build augmented system prompt with suspect context + RAG
+  // Build system prompt with suspect context
   let augmentedSystemPrompt = config.systemPrompt;
-  
-  // Add suspect context if available
+
   if (suspect) {
-    const suspectContext = generateSuspectContext(suspect);
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${suspectContext}`;
-  }
-  
-  // Add RAG context if available
-  if (ragContext) {
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
+    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${generateBasicSuspectContext(suspect)}`;
   }
 
-    const response = await openai.chat.completions.create({
+  const baseMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    { role: "system", content: augmentedSystemPrompt },
+    ...formattedMessages,
+  ];
+
+  const initialResponse = await openai.chat.completions.create({
     model,
-      messages: [
-      { role: "system", content: augmentedSystemPrompt },
-      ...formattedMessages,
-    ],
+    messages: baseMessages,
     max_tokens: maxTokens,
     temperature: config.temperature,
     response_format: { type: "json_object" },
+    tools: getToolsForAgent(agent),
   });
 
-  const content = response.choices[0]?.message?.content;
+  // Tool call loop
+  type OAIMessage = { role: string; content: string | null; tool_calls?: unknown; tool_call_id?: string };
+  const enrichedMessages: OAIMessage[] = [...baseMessages];
+  let totalUsage = initialResponse.usage;
+
+  if (initialResponse.choices[0]?.message?.tool_calls?.length) {
+    enrichedMessages.push(initialResponse.choices[0].message as OAIMessage);
+
+    for (const toolCall of initialResponse.choices[0].message.tool_calls) {
+      const toolName = toolCall.function.name;
+      const toolArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+      const label = TOOL_LABELS[toolName] || toolName;
+      const toolStart = Date.now();
+
+      await writer.write(encoder.encode(sseEvent("step", {
+        id: `tool_${toolName}`,
+        label,
+        status: "running",
+      })));
+
+      let toolResult: string;
+      if (toolName === "search_knowledge_base") {
+        const chunks = await retrieveContext(openai, toolArgs.query as string, 5);
+        toolResult = chunks.length > 0
+          ? buildContextString(chunks)
+          : "No relevant information found in the knowledge base.";
+      } else {
+        toolResult = suspect ? executeTool(toolName, toolArgs, suspect) : "[No suspect loaded]";
+      }
+      const toolDuration = Date.now() - toolStart;
+
+      await writer.write(encoder.encode(sseEvent("step", {
+        id: `tool_${toolName}`,
+        label,
+        status: "done",
+        detail: toolResult.slice(0, 120) + (toolResult.length > 120 ? "..." : ""),
+        durationMs: toolDuration,
+      })));
+
+      toolCalls.push({
+        name: toolName,
+        description: label,
+        input: toolArgs,
+        output: toolResult.slice(0, 200),
+        durationMs: toolDuration,
+        status: "success",
+      });
+
+      enrichedMessages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        content: toolResult,
+      } as OAIMessage);
+    }
+
+    // Follow-up call with tool results
+    const followUp = await openai.chat.completions.create({
+      model,
+      messages: enrichedMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
+      max_tokens: maxTokens,
+      temperature: config.temperature,
+      response_format: { type: "json_object" },
+    });
+
+    if (followUp.usage && totalUsage) {
+      totalUsage = {
+        prompt_tokens: totalUsage.prompt_tokens + followUp.usage.prompt_tokens,
+        completion_tokens: totalUsage.completion_tokens + followUp.usage.completion_tokens,
+        total_tokens: totalUsage.total_tokens + followUp.usage.total_tokens,
+      };
+    }
+
+    const finalContent = followUp.choices[0]?.message?.content;
+    if (!finalContent) throw new Error("No response from OpenAI after tool calls");
+
+    const tokenUsage: TokenUsage = {
+      promptTokens: totalUsage?.prompt_tokens || 0,
+      completionTokens: totalUsage?.completion_tokens || 0,
+      totalTokens: totalUsage?.total_tokens || 0,
+    };
+
+    let parsedResponse: AgentResponse;
+    try {
+      const parsed = JSON.parse(finalContent) as AgentResponse;
+      parsedResponse = {
+        message: parsed.message || "I'm not sure what to say.",
+        action: parsed.action || "none",
+        transitionNote: parsed.transitionNote,
+      };
+    } catch {
+      parsedResponse = { message: finalContent, action: "none" };
+    }
+
+    const estimateTokens = (text: string) => Math.ceil(text.length / 4);
+    const basePromptTokens = estimateTokens(config.systemPrompt);
+    const suspectContextTokens = suspect ? estimateTokens(generateBasicSuspectContext(suspect)) : 0;
+    const augmentedSystemTokens = basePromptTokens + suspectContextTokens;
+    const conversationTokens = Math.max(0, tokenUsage.promptTokens - augmentedSystemTokens);
+
+    return {
+      response: parsedResponse,
+      tokenUsage,
+      debug: {
+        agentId: agent, action: parsedResponse.action, transitionNote: parsedResponse.transitionNote, timestamp,
+        tokenUsage, tokenBreakdown: { basePromptTokens, suspectContextTokens, ragContextTokens: 0, conversationTokens, completionTokens: tokenUsage.completionTokens },
+        messageCount: messages.length, toolCalls, ragChunks: [], ragEnabled: false,
+        systemPrompt: augmentedSystemPrompt, conversationHistory, model, temperature: config.temperature, maxTokens, promptSent: promptSummary,
+      },
+    };
+  }
+
+  // No tool calls — use the initial response directly
+  const content = initialResponse.choices[0]?.message?.content;
   if (!content) throw new Error("No response from OpenAI");
 
   const tokenUsage: TokenUsage = {
-    promptTokens: response.usage?.prompt_tokens || 0,
-    completionTokens: response.usage?.completion_tokens || 0,
-    totalTokens: response.usage?.total_tokens || 0,
+    promptTokens: totalUsage?.prompt_tokens || 0,
+    completionTokens: totalUsage?.completion_tokens || 0,
+    totalTokens: totalUsage?.total_tokens || 0,
   };
 
   let parsedResponse: AgentResponse;
@@ -222,41 +354,30 @@ async function callAgentForDecision(
 
   // Estimate token breakdown (rough: 1 token ≈ 4 chars)
   const estimateTokens = (text: string) => Math.ceil(text.length / 4);
-  const baseSystemTokens = estimateTokens(config.systemPrompt);
-  const ragTokens = estimateTokens(ragContext);
-  const conversationTokens = tokenUsage.promptTokens - baseSystemTokens - ragTokens;
+  const basePromptTokens = estimateTokens(config.systemPrompt);
+  const suspectContextTokens = suspect ? estimateTokens(generateBasicSuspectContext(suspect)) : 0;
+  const augmentedSystemTokens = basePromptTokens + suspectContextTokens;
+  const conversationTokens = Math.max(0, tokenUsage.promptTokens - augmentedSystemTokens);
 
   const debug: MessageDebugInfo = {
-    // What changes per turn
     agentId: agent,
     action: parsedResponse.action,
     transitionNote: parsedResponse.transitionNote,
     timestamp,
-    
-    // Token breakdown
     tokenUsage,
     tokenBreakdown: {
-      systemPromptTokens: baseSystemTokens,
-      ragContextTokens: ragTokens,
-      conversationTokens: Math.max(0, conversationTokens),
+      basePromptTokens,
+      suspectContextTokens,
+      ragContextTokens: 0,
+      conversationTokens,
       completionTokens: tokenUsage.completionTokens,
     },
-    
-    // Conversation summary
     messageCount: messages.length,
-    
-    // Tool calls made this turn
     toolCalls,
-    
-    // RAG details
-    ragChunks,
-    ragEnabled: ragChunks.length > 0,
-    
-    // Full data (for "show more")
+    ragChunks: [],
+    ragEnabled: false,
     systemPrompt: augmentedSystemPrompt,
     conversationHistory,
-    
-    // Constants
     model,
     temperature: config.temperature,
     maxTokens,
@@ -273,8 +394,6 @@ async function streamAgentResponse(
   agent: AgentId,
   writer: WritableStreamDefaultWriter<Uint8Array>,
   encoder: TextEncoder,
-  ragContext: string = "",
-  ragChunks: RAGChunkInfo[] = [],
   suspect?: Suspect,
   toolCalls: ToolCall[] = []
 ): Promise<{ response: AgentResponse; tokenUsage: TokenUsage; debug: MessageDebugInfo }> {
@@ -287,31 +406,89 @@ async function streamAgentResponse(
   const lastUserMsg = messages.filter(m => m.role === "user").slice(-1)[0];
   const contextCount = messages.length;
   const hasSuspect = !!suspect;
-  const promptSummary = `Agent: ${agent} | Context: ${contextCount} msgs | RAG: ${ragContext ? "yes" : "no"} | Suspect: ${hasSuspect ? suspect.id : "none"} | Last user: "${lastUserMsg?.content?.slice(0, 50)}${(lastUserMsg?.content?.length || 0) > 50 ? '...' : ''}"`;
+  const promptSummary = `Agent: ${agent} | Context: ${contextCount} msgs | Suspect: ${hasSuspect ? suspect.id : "none"} | Last user: "${lastUserMsg?.content?.slice(0, 50)}${(lastUserMsg?.content?.length || 0) > 50 ? '...' : ''}"`;
   const conversationHistory = formattedMessages.map(m => ({ role: m.role, content: m.content }));
 
-  // Build augmented system prompt with suspect context + RAG
+  // Build system prompt with suspect context
   let augmentedSystemPrompt = config.systemPrompt;
-  
+
   if (suspect) {
-    const suspectContext = generateSuspectContext(suspect);
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${suspectContext}`;
+    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${generateBasicSuspectContext(suspect)}`;
   }
-  
-  if (ragContext) {
-    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${ragContext}`;
-  }
+
+  // Tool call detection phase (non-streaming)
+  type OAIMessage = { role: string; content: string | null; tool_calls?: unknown; tool_call_id?: string };
+  const streamMessages: OAIMessage[] = [
+    { role: "system", content: augmentedSystemPrompt },
+    ...formattedMessages,
+  ];
+
+  const toolDetection = await openai.chat.completions.create({
+    model,
+    messages: streamMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
+    max_tokens: maxTokens,
+    temperature: config.temperature,
+    tools: getToolsForAgent(agent),
+  });
+
+  if (toolDetection.choices[0]?.message?.tool_calls?.length) {
+    streamMessages.push(toolDetection.choices[0].message as OAIMessage);
+
+    for (const toolCall of toolDetection.choices[0].message.tool_calls) {
+      const toolName = toolCall.function.name;
+      const toolArgs = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+      const label = TOOL_LABELS[toolName] || toolName;
+      const toolStart = Date.now();
+
+      await writer.write(encoder.encode(sseEvent("step", {
+        id: `tool_${toolName}`,
+        label,
+        status: "running",
+      })));
+
+      let toolResult: string;
+      if (toolName === "search_knowledge_base") {
+        const chunks = await retrieveContext(openai, toolArgs.query as string, 5);
+        toolResult = chunks.length > 0
+          ? buildContextString(chunks)
+          : "No relevant information found in the knowledge base.";
+      } else {
+        toolResult = suspect ? executeTool(toolName, toolArgs, suspect) : "[No suspect loaded]";
+      }
+        const toolDuration = Date.now() - toolStart;
+
+        await writer.write(encoder.encode(sseEvent("step", {
+          id: `tool_${toolName}`,
+          label,
+          status: "done",
+          detail: toolResult.slice(0, 120) + (toolResult.length > 120 ? "..." : ""),
+          durationMs: toolDuration,
+        })));
+
+        toolCalls.push({
+          name: toolName,
+          description: label,
+          input: toolArgs,
+          output: toolResult.slice(0, 200),
+          durationMs: toolDuration,
+          status: "success",
+        });
+
+        streamMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: toolResult,
+        } as OAIMessage);
+      }
+    }
 
   // Send start event
   await writer.write(encoder.encode(sseEvent("start", { agent })));
 
-  // Create streaming completion
+  // Create streaming completion (with enriched messages if tools were called)
   const stream = await openai.chat.completions.create({
     model,
-    messages: [
-      { role: "system", content: augmentedSystemPrompt },
-      ...formattedMessages,
-    ],
+    messages: streamMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
     max_tokens: maxTokens,
     temperature: config.temperature,
     response_format: { type: "json_object" },
@@ -392,41 +569,32 @@ async function streamAgentResponse(
 
   // Estimate token breakdown
   const estimateTokens = (text: string) => Math.ceil(text.length / 4);
-  const baseSystemTokens = estimateTokens(config.systemPrompt);
-  const ragTokens = estimateTokens(ragContext);
-  const conversationTokens = tokenUsage.promptTokens - baseSystemTokens - ragTokens;
+  const basePromptTokens = estimateTokens(config.systemPrompt);
+  const suspectContextTokens = suspect ? estimateTokens(generateBasicSuspectContext(suspect)) : 0;
+  const augmentedSystemTokens = basePromptTokens + suspectContextTokens;
+  const conversationTokens = Math.max(0, tokenUsage.promptTokens - augmentedSystemTokens);
 
   const debug: MessageDebugInfo = {
-    // What changes per turn
     agentId: agent,
     action: parsedResponse.action,
     transitionNote: parsedResponse.transitionNote,
     timestamp,
-    
-    // Token breakdown
+
     tokenUsage,
     tokenBreakdown: {
-      systemPromptTokens: baseSystemTokens,
-      ragContextTokens: ragTokens,
-      conversationTokens: Math.max(0, conversationTokens),
+      basePromptTokens,
+      suspectContextTokens,
+      ragContextTokens: 0,
+      conversationTokens,
       completionTokens: tokenUsage.completionTokens,
     },
-    
-    // Conversation summary
+
     messageCount: messages.length,
-    
-    // Tool calls made this turn
     toolCalls,
-    
-    // RAG details
-    ragChunks,
-    ragEnabled: ragChunks.length > 0,
-    
-    // Full data (for "show more")
+    ragChunks: [],
+    ragEnabled: false,
     systemPrompt: augmentedSystemPrompt,
     conversationHistory,
-    
-    // Constants
     model,
     temperature: config.temperature,
     maxTokens,
@@ -526,83 +694,41 @@ export async function POST(request: NextRequest) {
       let totalTokenUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       const toolCalls: ToolCall[] = [];
 
-      // TOOL 1: Suspect Lookup
-      const suspectLookupStart = Date.now();
-      if (suspect) {
-        toolCalls.push({
-          name: "suspect_lookup",
-          description: "Load suspect profile from database",
-          input: { suspectId },
-          output: `Found: ${suspect.name} (${suspect.currentCase.crime})`,
-          durationMs: Date.now() - suspectLookupStart,
-          status: "success",
-        });
-      } else if (suspectId) {
-        toolCalls.push({
-          name: "suspect_lookup",
-          description: "Load suspect profile from database",
-          input: { suspectId },
-          output: "Suspect not found",
-          durationMs: Date.now() - suspectLookupStart,
-          status: "error",
-        });
-      }
+      // --- STEP: LLM Call (tools including RAG are agent-driven) ---
+      const agentName = activeAgent === "goody" ? "Goody" : "Baddy";
+      await writer.write(encoder.encode(sseEvent("step", {
+        id: "decision",
+        label: `Generating ${agentName}'s response`,
+        status: "running",
+        detail: `gpt-4o-mini, ${messages.length} msgs in context`,
+      })));
 
-      // TOOL 2: RAG - Retrieve relevant context based on the last user message
-      // Only run RAG if it's NOT the first turn (trigger message) and the message is substantial
-      const lastUserMessage = messages.filter(m => m.role === "user").slice(-1)[0]?.content || "";
-      const isFirstTurn = lastUserMessage.startsWith("[INTERROGATION START");
-      const isShortMessage = lastUserMessage.length < 15; // Skip RAG for very short messages like "ok", "yes"
-      const shouldSkipRAG = isFirstTurn || isShortMessage;
-      
-      let retrievedChunks: { id: string; text: string; category: string; score: number }[] = [];
-      let ragContext = "";
-      let ragChunks: RAGChunkInfo[] = [];
-      
-      if (shouldSkipRAG) {
-        console.log(`RAG: Skipped (${isFirstTurn ? "first turn trigger" : "short message"})`);
-      } else {
-        const ragStart = Date.now();
-        retrievedChunks = await retrieveContext(openai, lastUserMessage, 5);
-        ragContext = buildContextString(retrievedChunks);
-        
-        // Convert to RAGChunkInfo format for debug
-        ragChunks = retrievedChunks.map(c => ({
-          id: c.id,
-          score: c.score,
-          category: c.category,
-          preview: c.text.slice(0, 100) + (c.text.length > 100 ? "..." : ""),
-        }));
-        
-        toolCalls.push({
-          name: "rag_retrieval",
-          description: "Search knowledge base for relevant context",
-          input: { query: lastUserMessage.slice(0, 50) + (lastUserMessage.length > 50 ? "..." : "") },
-          output: retrievedChunks.length > 0 
-            ? `Found ${retrievedChunks.length} chunks (top: ${retrievedChunks[0]?.id || "none"})`
-            : "No relevant chunks found",
-          durationMs: Date.now() - ragStart,
-          status: retrievedChunks.length > 0 ? "success" : "skipped",
-        });
-        
-        if (retrievedChunks.length > 0) {
-          console.log(`RAG: Retrieved ${retrievedChunks.length} chunks for: "${lastUserMessage.slice(0, 50)}..."`);
-          retrievedChunks.forEach(c => console.log(`  - ${c.id} (score: ${c.score.toFixed(2)})`));
-        }
-      }
-
-      // STEP 1: Make a NON-STREAMING call to get the decision
-      // This call is NOT shown to the user - it's just to check if there's a handoff
-      console.log("Step 1: Calling agent for decision...");
-      const decisionResult = await callAgentForDecision(openai, messages, activeAgent, ragContext, ragChunks, suspect, toolCalls);
-      console.log("Decision result:", decisionResult.response.action, decisionResult.response.message?.slice(0, 50));
+      const decisionStart = Date.now();
+      const decisionResult = await callAgentForDecision(openai, messages, activeAgent, writer, encoder, suspect, toolCalls);
+      const decisionDuration = Date.now() - decisionStart;
       totalTokenUsage = { ...decisionResult.tokenUsage };
 
-      // STEP 2: Check if there's a handoff
+      const actionLabel = decisionResult.response.action === "bring_colleague" || decisionResult.response.action === "step_out"
+        ? "Will hand off"
+        : "Will respond";
+
+      await writer.write(encoder.encode(sseEvent("step", {
+        id: "decision",
+        label: `LLM responded`,
+        status: "done",
+        detail: `${actionLabel} (${decisionResult.tokenUsage.promptTokens}+${decisionResult.tokenUsage.completionTokens} tokens, ${decisionDuration}ms)`,
+        durationMs: decisionDuration,
+      })));
+
+      // Check if there's a handoff
       if (decisionResult.response.action === "bring_colleague" || decisionResult.response.action === "step_out") {
-        // HANDOFF: Don't show first agent's message at all
-        // Just send transitions and stream the second agent
         const enteringAgent = getOtherAgent(activeAgent);
+
+        await writer.write(encoder.encode(sseEvent("step", {
+          id: "handoff",
+          label: `Handing off to ${enteringAgent === "goody" ? "Goody" : "Baddy"}`,
+          status: "done",
+        })));
         const transition = generateTransition(activeAgent, enteringAgent);
 
         // Send handoff event with transition messages
@@ -619,7 +745,7 @@ export async function POST(request: NextRequest) {
         })));
 
         // Stream the NEW agent's response (this is what the user sees)
-        const newAgentResult = await streamAgentResponse(openai, messages, enteringAgent, writer, encoder, ragContext, ragChunks, suspect, toolCalls);
+        const newAgentResult = await streamAgentResponse(openai, messages, enteringAgent, writer, encoder, suspect, toolCalls);
 
         totalTokenUsage = {
           promptTokens: totalTokenUsage.promptTokens + newAgentResult.tokenUsage.promptTokens,

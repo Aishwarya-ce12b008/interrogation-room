@@ -20,6 +20,7 @@ export interface Associate {
   relationship: string;
   criminalRecord: boolean;
   notes: string;
+  vulnerability?: string;
 }
 
 export interface CurrentCase {
@@ -33,6 +34,11 @@ export interface CurrentCase {
   evidence: Evidence[]; // Full evidence (accessed via tool)
   maxSentence: string;
   minSentence: string;
+  victimImpact?: {
+    emotional: string;
+    financial: string;
+    family: string;
+  };
 }
 
 export interface Suspect {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, Montserrat, Special_Elite } from "next/font/google";
+import { Bebas_Neue, Public_Sans, Special_Elite } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 const bebasNeue = Bebas_Neue({
@@ -16,9 +17,9 @@ const specialElite = Special_Elite({
   display: "swap",
 });
 
-const montserrat = Montserrat({
+const publicSans = Public_Sans({
   subsets: ["latin"],
-  variable: "--font-montserrat",
+  variable: "--font-public-sans",
   display: "swap",
 });
 
@@ -33,9 +34,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${bebasNeue.variable} ${specialElite.variable} ${montserrat.variable} font-body antialiased`}>
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${bebasNeue.variable} ${specialElite.variable} ${publicSans.variable} font-body antialiased`}>
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

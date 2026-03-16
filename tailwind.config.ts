@@ -12,7 +12,7 @@ const config: Config = {
       fontFamily: {
         display: ["var(--font-bebas)", "sans-serif"],
         typewriter: ["var(--font-typewriter)", "monospace"],
-        body: ["var(--font-montserrat)", "sans-serif"],
+        body: ["var(--font-public-sans)", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -56,7 +56,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
 };
 export default config;
 
