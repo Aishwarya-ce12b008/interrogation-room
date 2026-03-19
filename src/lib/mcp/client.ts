@@ -120,7 +120,7 @@ export class McpClientManager {
   // All MCP tools in OpenAI function-calling format
   getToolsAsOpenAI() {
     const tools: ReturnType<typeof mcpToolToOpenAI>[] = [];
-    for (const server of this.servers.values()) {
+    for (const server of Array.from(this.servers.values())) {
       for (const tool of server.tools) {
         tools.push(mcpToolToOpenAI(tool));
       }
@@ -180,7 +180,7 @@ export class McpClientManager {
 
   get toolCount(): number {
     let n = 0;
-    for (const s of this.servers.values()) n += s.tools.length;
+    for (const s of Array.from(this.servers.values())) n += s.tools.length;
     return n;
   }
 }
