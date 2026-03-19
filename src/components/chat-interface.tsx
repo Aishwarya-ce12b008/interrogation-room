@@ -475,7 +475,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
                 <p className="text-sm text-foreground font-semibold truncate">{subject.name}</p>
                 <p className="text-xs text-muted-foreground truncate">
                   {isMerchantSystem
-                    ? `${(subject as MerchantCardData).type} · ${(subject as MerchantCardData).city}`
+                    ? `${(subject as MerchantCardData).business_type} · ${(subject as MerchantCardData).city}`
                     : `${(subject as SuspectCardData).currentCrime} · ${(subject as SuspectCardData).city}`
                   }
                 </p>
