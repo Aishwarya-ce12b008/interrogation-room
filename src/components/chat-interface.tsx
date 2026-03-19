@@ -1,22 +1,20 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { ChatMessage } from "@/components/chat-message";
 import { ObservabilityPanel } from "@/components/observability-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { SuspectCard, SuspectCardData } from "@/components/suspect-card";
+import { SuspectCard } from "@/components/suspect-card";
+import { MerchantCard } from "@/components/merchant-card";
+import { KpiStrip } from "@/components/kpi-strip";
 import { InlineSteps } from "@/components/inline-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RoomState, Message, TokenUsage, MessageDebugInfo, AgentId, PipelineStep } from "@/lib/agents";
-import { suspectCards } from "@/lib/database/suspect-cards";
-import { Send, Eye, EyeOff, ArrowRight, ChevronDown } from "lucide-react";
-
-const DEFAULT_ROOM_STATE: RoomState = {
-  goodyInRoom: true,
-  baddyInRoom: true,
-  activeAgent: "goody",
-};
+import { RoomState, Message, TokenUsage, MessageDebugInfo, AgentId, PipelineStep, ToolCallRef } from "@/lib/agents";
+import { Send, Eye, EyeOff, ArrowRight, ChevronDown, ArrowLeft } from "lucide-react";
+import { type SystemDefinition, getSystem } from "@/systems/registry";
+import { type SuspectCardData } from "@/systems/interrogation/types";
+import { type MerchantCardData } from "@/systems/smb-analytics/types";
 
 const CONTEXT_WINDOW_LIMIT = 128000;
 
@@ -59,6 +57,32 @@ function createStreamHandler(opts: {
             opts.pendingStepsRef.current = [...opts.pendingStepsRef.current, step];
           }
           opts.setPendingSteps(opts.pendingStepsRef.current);
+          break;
+        }
+
+        case "tool_history": {
+          const toolCalls = data.assistantToolCalls as ToolCallRef[];
+          const toolResults = data.toolResults as { tool_call_id: string; name: string; content: string }[];
+
+          // Insert assistant message with tool_calls (hidden from UI, used for API context)
+          const assistantToolMsg: Message = {
+            id: `tool-ast-${Date.now()}`,
+            role: "assistant",
+            content: "",
+            tool_calls: toolCalls,
+          };
+          opts.setMessages(prev => [...prev, assistantToolMsg]);
+
+          // Insert each tool result message
+          const toolMsgs: Message[] = toolResults.map((tr, i) => ({
+            id: `tool-res-${Date.now()}-${i}`,
+            role: "tool" as const,
+            content: tr.content,
+            tool_call_id: tr.tool_call_id,
+          }));
+          if (toolMsgs.length > 0) {
+            opts.setMessages(prev => [...prev, ...toolMsgs]);
+          }
           break;
         }
 
@@ -148,17 +172,27 @@ function createStreamHandler(opts: {
   };
 }
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  systemId: string;
+  onBack: () => void;
+}
+
+export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
+  const [system, setSystem] = useState<SystemDefinition | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [roomState, setRoomState] = useState<RoomState>(DEFAULT_ROOM_STATE);
+  const [roomState, setRoomState] = useState<RoomState>({
+    goodyInRoom: true,
+    baddyInRoom: true,
+    activeAgent: "goody",
+  });
   const [tokenUsage, setTokenUsage] = useState<TokenUsage>({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
   const [lastRequestTokens, setLastRequestTokens] = useState<TokenUsage | null>(null);
   const [allTurnDebug, setAllTurnDebug] = useState<MessageDebugInfo[]>([]);
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number>(0);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [suspect, setSuspect] = useState<SuspectCardData | null>(null);
+  const [subject, setSubject] = useState<SuspectCardData | MerchantCardData | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
   const [showCasePopover, setShowCasePopover] = useState(false);
@@ -170,6 +204,25 @@ export function ChatInterface() {
   const caseButtonRef = useRef<HTMLButtonElement>(null);
   const requestInFlight = useRef(false);
   const pendingStepsRef = useRef<PipelineStep[]>([]);
+  const hasAutoStarted = useRef(false);
+
+  // Load system definition
+  useEffect(() => {
+    getSystem(systemId).then(sys => {
+      if (sys) {
+        setSystem(sys);
+        setRoomState({
+          goodyInRoom: true,
+          baddyInRoom: true,
+          activeAgent: sys.defaultAgent as AgentId,
+        });
+        // If system has no subjects, skip subject selection
+        if (!sys.hasSubjects) {
+          setHasStarted(true);
+        }
+      }
+    });
+  }, [systemId]);
 
   const showError = (msg: string) => {
     setToast(msg);
@@ -177,7 +230,6 @@ export function ChatInterface() {
   };
 
   const handleMessageDebugClick = (debug: MessageDebugInfo) => {
-    // Find by timestamp since object identity won't match after JSON round-trip
     let idx = allTurnDebug.indexOf(debug);
     if (idx < 0) {
       idx = allTurnDebug.findIndex(d => d.timestamp === debug.timestamp && d.agentId === debug.agentId);
@@ -193,6 +245,14 @@ export function ChatInterface() {
   useEffect(() => { scrollToBottom(); }, [messages, pendingSteps]);
   useEffect(() => { if (!isLoading) inputRef.current?.focus(); }, [isLoading]);
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Auto-start for systems without subjects
+  useEffect(() => {
+    if (hasStarted && system && !system.hasSubjects && messages.length === 0 && !hasAutoStarted.current) {
+      hasAutoStarted.current = true;
+      startSession();
+    }
+  }, [hasStarted, system, messages.length]);
 
   useEffect(() => {
     if (!showCasePopover) return;
@@ -253,22 +313,31 @@ export function ChatInterface() {
     }
   }
 
-  const startInterrogation = async () => {
-    if (!suspect || requestInFlight.current || hasStarted) return;
+  const startSession = async () => {
+    if (requestInFlight.current) return;
+    // For systems with subjects, require one selected
+    if (system?.hasSubjects && !subject) return;
+
     requestInFlight.current = true;
     pendingStepsRef.current = [];
     setHasStarted(true);
     setIsLoading(true);
     setPendingSteps([]);
 
-    const triggerMessage = `[INTERROGATION START: Suspect ${suspect.name} brought in for ${suspect.currentCrime}]`;
+    let triggerMessage = `[SESSION START]`;
+    if (subject && system?.subjectCardType === "merchant") {
+      triggerMessage = `[SESSION START] Merchant: ${subject.name}`;
+    } else if (subject && "currentCrime" in subject) {
+      triggerMessage = `[INTERROGATION START: Suspect ${subject.name} brought in for ${(subject as SuspectCardData).currentCrime}]`;
+    }
 
     try {
       await processStream("/api/chat", {
         messages: [{ role: "user", content: triggerMessage }],
         activeAgent: roomState.activeAgent,
         roomState,
-        suspectId: suspect.id,
+        suspectId: subject?.id,
+        systemId,
       });
     } catch (error) {
       setStreamingMessageId(null);
@@ -282,7 +351,7 @@ export function ChatInterface() {
   };
 
   const sendMessage = async (messageText: string) => {
-    if (!messageText.trim() || requestInFlight.current || !suspect) return;
+    if (!messageText.trim() || requestInFlight.current) return;
     requestInFlight.current = true;
 
     const userMessage: Message = {
@@ -300,13 +369,20 @@ export function ChatInterface() {
     try {
       const apiMessages = [...messages, userMessage]
         .filter(m => !m.isTransition)
-        .map(m => ({ role: m.role, content: m.content, agent: m.agent }));
+        .map(m => {
+          const msg: Record<string, unknown> = { role: m.role, content: m.content };
+          if (m.agent) msg.agent = m.agent;
+          if (m.tool_calls) msg.tool_calls = m.tool_calls;
+          if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
+          return msg;
+        });
 
       await processStream("/api/chat", {
         messages: apiMessages,
         activeAgent: roomState.activeAgent,
         roomState,
-        suspectId: suspect.id,
+        suspectId: subject?.id,
+        systemId,
       });
     } catch (error) {
       setStreamingMessageId(null);
@@ -335,44 +411,79 @@ export function ChatInterface() {
     </div>
   ) : null;
 
-  // --- Suspect selection screen ---
-  if (!hasStarted) {
+  // Loading system
+  if (!system) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce" />
+          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:0.15s]" />
+          <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:0.3s]" />
+        </div>
+      </div>
+    );
+  }
+
+  // --- Subject selection screen (for systems that have subjects) ---
+  if (system.hasSubjects && !hasStarted) {
+    const isMerchantSystem = system.subjectCardType === "merchant";
+    const subjectCards = (system.getSubjectCards?.() || []) as (SuspectCardData | MerchantCardData)[];
+
+    const subjectDescription = isMerchantSystem
+      ? `Select a ${system.subjectLabel || "merchant"} to analyze their business data.`
+      : `Pick a ${system.subjectLabel || "character"} to play as. Each one has a unique backstory and set of circumstances.`;
+
     return (
       <div className="h-screen flex flex-col overflow-hidden">
         {ToastUI}
         <header className="relative px-6 py-4 border-b border-border flex items-center justify-between">
-          <h1 className="font-display text-2xl tracking-wide text-foreground">The Interrogation Room</h1>
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-secondary">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h1 className="font-display text-2xl tracking-wide text-foreground">{system.name}</h1>
+          </div>
           <ThemeToggle />
         </header>
 
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-6 py-10">
             <div className="mb-10 max-w-lg">
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">Choose your character</h2>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Choose your {system.subjectLabel || "character"}</h2>
               <p className="text-muted-foreground mt-2 text-[15px] leading-relaxed">
-                Pick a suspect to play as. Each character has a unique backstory, criminal record, and set of circumstances. The detectives will adapt their strategy accordingly.
+                {subjectDescription}
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {suspectCards.map((s, i) => (
-                <SuspectCard key={s.id} suspect={s} compact index={i} selected={suspect?.id === s.id} onClick={() => setSuspect(s)} />
-              ))}
+              {isMerchantSystem
+                ? (subjectCards as MerchantCardData[]).map((m, i) => (
+                    <MerchantCard key={m.id} merchant={m} index={i} selected={subject?.id === m.id} onClick={() => setSubject(m)} />
+                  ))
+                : (subjectCards as SuspectCardData[]).map((s, i) => (
+                    <SuspectCard key={s.id} suspect={s} compact index={i} selected={subject?.id === s.id} onClick={() => setSubject(s)} />
+                  ))
+              }
             </div>
           </div>
         </main>
 
-        {suspect && (
+        {subject && (
           <footer className="border-t border-border bg-card/80 backdrop-blur-xl px-6 py-4">
             <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-sm text-foreground font-semibold truncate">{suspect.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{suspect.currentCrime} &middot; {suspect.city}</p>
+                <p className="text-sm text-foreground font-semibold truncate">{subject.name}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {isMerchantSystem
+                    ? `${(subject as MerchantCardData).type} · ${(subject as MerchantCardData).city}`
+                    : `${(subject as SuspectCardData).currentCrime} · ${(subject as SuspectCardData).city}`
+                  }
+                </p>
               </div>
-              <Button onClick={startInterrogation} disabled={isLoading} className="bg-foreground text-background hover:bg-foreground/90 px-6 h-11 shrink-0 rounded-xl font-semibold text-[15px] gap-2">
+              <Button onClick={startSession} disabled={isLoading} className="bg-foreground text-background hover:bg-foreground/90 px-6 h-11 shrink-0 rounded-xl font-semibold text-[15px] gap-2">
                 {isLoading ? (
                   <span className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-background rounded-full animate-pulse" />Entering...</span>
-                ) : (<>Begin interrogation<ArrowRight className="w-4 h-4" /></>)}
+                ) : (<>Begin session<ArrowRight className="w-4 h-4" /></>)}
               </Button>
             </div>
           </footer>
@@ -387,17 +498,20 @@ export function ChatInterface() {
       {ToastUI}
       <header className="flex items-center justify-between px-6 py-3 border-b border-border">
         <div className="flex items-center gap-4">
-          <h1 className="font-display text-xl tracking-wide text-foreground">THE INTERROGATION ROOM</h1>
-          {suspect && (
+          <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-secondary">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <h1 className="font-display text-xl tracking-wide text-foreground">{system.name.toUpperCase()}</h1>
+          {subject && (
             <div className="relative">
               <button ref={caseButtonRef} onClick={() => setShowCasePopover(!showCasePopover)} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary hover:bg-accent text-sm text-muted-foreground transition-colors">
-                <span className="font-medium text-foreground">{suspect.name}</span>
-                <span className="text-muted-foreground/60">{suspect.id}</span>
+                <span className="font-medium text-foreground">{subject.name}</span>
+                {system.subjectCardType !== "merchant" && <span className="text-muted-foreground/60">{subject.id}</span>}
                 <ChevronDown className="w-3 h-3" />
               </button>
-              {showCasePopover && (
+              {showCasePopover && system.subjectCardType !== "merchant" && "currentCrime" in subject && (
                 <div className="absolute top-full left-0 mt-2 z-50 w-80">
-                  <SuspectCard suspect={suspect} />
+                  <SuspectCard suspect={subject as SuspectCardData} />
                 </div>
               )}
             </div>
@@ -416,11 +530,15 @@ export function ChatInterface() {
         </div>
       </header>
 
+      {system.dashboard && subject && (
+        <KpiStrip merchantCardId={subject.id} apiEndpoint={system.dashboard.apiEndpoint} />
+      )}
+
       <div className="flex-1 flex overflow-hidden">
         <div className={`flex flex-col ${showPanel ? 'flex-[3]' : 'flex-1'} min-w-0`}>
           <main className="flex-1 overflow-y-auto p-6">
             <div className="max-w-4xl mx-auto space-y-4">
-              {messages.filter(m => !m.isTransition).map((message) => (
+              {messages.filter(m => !m.isTransition && m.role !== "tool" && !(m.role === "assistant" && m.tool_calls && !m.content)).map((message) => (
                 <div key={message.id}>
                   {/* Steps timeline above assistant message */}
                   {message.role === "assistant" && message.steps && message.steps.length > 0 && (
@@ -446,7 +564,7 @@ export function ChatInterface() {
                     </div>
                   ))}
                   <ChatMessage
-                    role={message.role}
+                    role={message.role as "user" | "assistant"}
                     content={message.content}
                     agent={message.agent}
                     debug={message.debug}
@@ -485,7 +603,7 @@ export function ChatInterface() {
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setInput("");
                 }}
-                placeholder="Respond to the detectives..."
+                placeholder="Type your response..."
                 disabled={isLoading}
                 autoFocus
                 className="flex-1 bg-secondary border-0 rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 text-[15px] h-11 px-5 shadow-none"
@@ -494,7 +612,6 @@ export function ChatInterface() {
                 <Send className="w-4 h-4" />
               </Button>
             </form>
-
           </div>
         </div>
 

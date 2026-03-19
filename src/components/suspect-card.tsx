@@ -2,20 +2,9 @@
 
 import { AlertTriangle, History, Shield, Flame, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { SuspectCardData } from "@/systems/interrogation/types";
 
-export interface SuspectCardData {
-  id: string;
-  name: string;
-  age: number;
-  gender: string;
-  city: string;
-  occupation: string;
-  employer?: string;
-  priorCount: number;
-  currentCrime: string;
-  caseAmount?: string;
-  maxSentence: string;
-}
+export type { SuspectCardData };
 
 interface SuspectCardProps {
   suspect: SuspectCardData;

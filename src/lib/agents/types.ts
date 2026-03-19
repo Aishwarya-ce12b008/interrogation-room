@@ -1,4 +1,4 @@
-export type AgentId = "goody" | "baddy";
+export type AgentId = string;
 
 export type ActionSignal = "none" | "bring_colleague" | "step_out";
 
@@ -61,6 +61,15 @@ export interface ToolCall {
   status: "success" | "error" | "skipped";
 }
 
+export interface LLMCallInfo {
+  label: string;
+  promptTokens: number;
+  completionTokens: number;
+  durationMs: number;
+  toolResultTokens?: number;
+  messages: Array<{ role: string; content: string | null }>;
+}
+
 export interface MessageDebugInfo {
   // What changes per turn
   agentId?: AgentId;
@@ -71,11 +80,11 @@ export interface MessageDebugInfo {
   // Token breakdown
   tokenUsage?: TokenUsage;
   tokenBreakdown?: {
-    basePromptTokens: number;      // Base system prompt (constant per agent)
-    suspectContextTokens: number;  // Suspect profile injected into system prompt
-    ragContextTokens: number;      // RAG chunks injected into system prompt
-    conversationTokens: number;    // Conversation history (grows each turn)
-    completionTokens: number;      // LLM output
+    basePromptTokens: number;
+    suspectContextTokens: number;
+    ragContextTokens: number;
+    conversationTokens: number;
+    completionTokens: number;
   };
   
   // Conversation summary (not full content)
@@ -83,6 +92,9 @@ export interface MessageDebugInfo {
   
   // Tool calls made this turn
   toolCalls?: ToolCall[];
+  
+  // Individual LLM calls made this turn
+  llmCalls?: LLMCallInfo[];
   
   // RAG details
   ragChunks?: RAGChunkInfo[];
@@ -107,9 +119,15 @@ export interface PipelineStep {
   durationMs?: number;
 }
 
+export interface ToolCallRef {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
   agent?: AgentId;
   isTransition?: boolean;
@@ -117,6 +135,8 @@ export interface Message {
   debug?: MessageDebugInfo;
   steps?: PipelineStep[];
   transitions?: string[];
+  tool_calls?: ToolCallRef[];
+  tool_call_id?: string;
 }
 
 export interface AgentConfig {

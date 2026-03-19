@@ -1,5 +1,7 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { AgentId, MessageDebugInfo } from "@/lib/agents";
 import { SkillBadges } from "@/components/skill-badge";
@@ -9,13 +11,14 @@ interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   agent?: AgentId;
+  agentName?: string;
   isTransition?: boolean;
   debug?: MessageDebugInfo;
   isStreaming?: boolean;
   onOpenDebug?: () => void;
 }
 
-export function ChatMessage({ role, content, agent, isTransition, debug, isStreaming, onOpenDebug }: ChatMessageProps) {
+export function ChatMessage({ role, content, agent, agentName, isTransition, debug, isStreaming, onOpenDebug }: ChatMessageProps) {
   const isUser = role === "user";
 
   if (isTransition) return null;
@@ -40,17 +43,21 @@ export function ChatMessage({ role, content, agent, isTransition, debug, isStrea
             <div className="flex items-center gap-2">
               <div className={cn(
                 "w-1.5 h-1.5 rounded-full",
-                agent === "goody" ? "bg-emerald-500" : "bg-red-500"
+                agent === "goody" ? "bg-emerald-500" :
+                agent === "baddy" ? "bg-red-500" :
+                "bg-purple-500"
               )} />
               <span
                 className={cn(
                   "text-xs font-semibold uppercase tracking-widest",
                   agent === "goody"
                     ? "text-emerald-600 dark:text-emerald-500"
-                    : "text-red-600 dark:text-red-400"
+                    : agent === "baddy"
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-purple-600 dark:text-purple-400"
                 )}
               >
-                {agent === "goody" ? "Goody" : "Baddy"}
+                {agentName || agent}
               </span>
             </div>
             {debug && onOpenDebug && (
@@ -65,12 +72,16 @@ export function ChatMessage({ role, content, agent, isTransition, debug, isStrea
           </div>
         )}
 
-        <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-          {content}
+        <div className="text-[15px] leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-2 prose-blockquote:my-2 prose-table:my-2 prose-th:px-3 prose-th:py-1.5 prose-th:text-left prose-th:text-xs prose-th:font-semibold prose-th:uppercase prose-th:tracking-wider prose-th:text-muted-foreground prose-td:px-3 prose-td:py-1.5 prose-td:text-sm prose-thead:border-b prose-thead:border-border prose-tr:border-b prose-tr:border-border/50">
+          {isUser ? (
+            <p className="whitespace-pre-wrap m-0">{content}</p>
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          )}
           {isStreaming && (
             <span className="inline-block w-0.5 h-4 ml-0.5 bg-current animate-pulse rounded-full" />
           )}
-        </p>
+        </div>
 
         {!isUser && debug && !isStreaming && (
           <SkillBadges debug={debug} />

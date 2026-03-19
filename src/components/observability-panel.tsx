@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
-import { MessageDebugInfo, ToolCall as ToolCallType } from "@/lib/agents";
+import { MessageDebugInfo, ToolCall as ToolCallType, LLMCallInfo } from "@/lib/agents";
 
 interface ObservabilityPanelProps {
   debug: MessageDebugInfo | null;
@@ -123,8 +123,8 @@ export function ObservabilityPanel({
         {activeTab === "agent" && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <div className={cn("w-3 h-3 rounded-full", debug.agentId === "goody" ? "bg-emerald-500" : "bg-red-500")} />
-              <span className="text-base font-semibold text-foreground">{debug.agentId === "goody" ? "Goody" : "Baddy"}</span>
+              <div className={cn("w-3 h-3 rounded-full", debug.agentId === "goody" ? "bg-emerald-500" : debug.agentId === "baddy" ? "bg-red-500" : "bg-purple-500")} />
+              <span className="text-base font-semibold text-foreground capitalize">{debug.agentId || "Agent"}</span>
               {debug.action && debug.action !== "none" && (
                 <>
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
@@ -134,7 +134,7 @@ export function ObservabilityPanel({
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <MetaCell label="Model" value={debug.model || "gpt-4o-mini"} mono />
+              <MetaCell label="Model" value={debug.model || "gpt-4.1-mini"} mono />
               <MetaCell label="Temperature" value={String(debug.temperature ?? "—")} mono />
               <MetaCell label="Max tokens" value={debug.maxTokens?.toLocaleString() || "1024"} mono />
               <MetaCell label="Response format" value="JSON object" mono />
@@ -154,9 +154,13 @@ export function ObservabilityPanel({
         {/* ===== TOOLS TAB ===== */}
         {activeTab === "tools" && (
           <div className="space-y-3">
-            {hasTools ? debug.toolCalls!.map((tool, idx) => (
-              <ToolCallDetail key={idx} tool={tool} />
-            )) : (
+            {debug.llmCalls && debug.llmCalls.length > 0 ? (
+              <PipelineTimeline llmCalls={debug.llmCalls} toolCalls={debug.toolCalls || []} />
+            ) : hasTools ? (
+              debug.toolCalls!.map((tool, idx) => (
+                <ToolCallDetail key={idx} tool={tool} />
+              ))
+            ) : (
               <p className="text-sm text-muted-foreground italic py-8 text-center">No tool calls this turn</p>
             )}
           </div>
@@ -208,7 +212,7 @@ export function ObservabilityPanel({
                   <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-2 font-medium">Augmented system prompt</div>
                   <div className="space-y-2 pl-2 border-l-2 border-blue-500/20">
                     <TokenBar label="Base system prompt" value={breakdown.basePromptTokens} total={totalTokens} color="blue" />
-                    <TokenBar label="Suspect profile context" value={breakdown.suspectContextTokens} total={totalTokens} color="blue" />
+                    <TokenBar label="Dynamic context" value={breakdown.suspectContextTokens} total={totalTokens} color="blue" />
                     <TokenBar label="RAG context (injected)" value={breakdown.ragContextTokens} total={totalTokens} color="purple" />
                   </div>
                   <div className="mt-1.5 pl-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -231,7 +235,7 @@ export function ObservabilityPanel({
                 </div>
 
                 <p className="text-[11px] text-muted-foreground/60 italic leading-relaxed">
-                  Augmented System Prompt = Base Prompt + Suspect Profile + RAG Context. Conversation history is all messages so far. Output is the completion tokens for this turn.
+                  Augmented System Prompt = Base Prompt + Dynamic Context + RAG Context. Conversation history is all messages so far. Output is the completion tokens for this turn.
                 </p>
               </>
             )}
@@ -337,8 +341,136 @@ function ToolCallDetail({ tool }: { tool: ToolCallType }) {
       {tool.output && (
         <div>
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-1 font-medium">Return value</div>
-          <pre className="text-xs text-foreground/80 font-mono bg-secondary rounded px-2.5 py-1.5 overflow-x-auto whitespace-pre-wrap">{tool.output}</pre>
+          <pre className="text-xs text-foreground/80 font-mono bg-secondary rounded px-2.5 py-1.5 overflow-x-auto whitespace-pre-wrap">{(() => { try { return JSON.stringify(JSON.parse(tool.output), null, 2); } catch { return tool.output; } })()}</pre>
         </div>
+      )}
+    </div>
+  );
+}
+
+function PipelineTimeline({ llmCalls, toolCalls }: { llmCalls: LLMCallInfo[]; toolCalls: ToolCallType[] }) {
+  const isMultiCall = llmCalls.length > 1;
+
+  if (!isMultiCall) {
+    return (
+      <div className="space-y-3">
+        <LLMCallDetail call={llmCalls[0]} index={0} />
+        {toolCalls.map((tool, idx) => (
+          <ToolCallDetail key={idx} tool={tool} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <LLMCallDetail call={llmCalls[0]} index={0} />
+      {toolCalls.map((tool, idx) => (
+        <ToolCallDetail key={idx} tool={tool} />
+      ))}
+      <LLMCallDetail call={llmCalls[1]} index={1} />
+    </div>
+  );
+}
+
+function LLMCallDetail({ call, index }: { call: LLMCallInfo; index: number }) {
+  const [showMessages, setShowMessages] = useState(false);
+
+  return (
+    <div className="bg-blue-500/5 border border-blue-500/15 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain className="w-3.5 h-3.5 text-blue-500" />
+          <span className="text-sm font-medium text-foreground">LLM Call #{index + 1}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium uppercase tracking-wider">
+            {call.label}
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground font-mono">{call.durationMs}ms</span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="bg-secondary rounded px-2 py-1.5">
+          <div className="text-muted-foreground text-[10px] uppercase tracking-widest">Prompt</div>
+          <div className="font-mono text-foreground">{call.promptTokens.toLocaleString()}</div>
+        </div>
+        <div className="bg-secondary rounded px-2 py-1.5">
+          <div className="text-muted-foreground text-[10px] uppercase tracking-widest">Completion</div>
+          <div className="font-mono text-foreground">{call.completionTokens.toLocaleString()}</div>
+        </div>
+        <div className="bg-secondary rounded px-2 py-1.5">
+          <div className="text-muted-foreground text-[10px] uppercase tracking-widest">Total</div>
+          <div className="font-mono text-foreground">{(call.promptTokens + call.completionTokens).toLocaleString()}</div>
+        </div>
+      </div>
+
+      {call.toolResultTokens !== undefined && call.toolResultTokens > 0 && (
+        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Wrench className="w-3 h-3" />
+          <span>Includes ~{call.toolResultTokens.toLocaleString()} tokens from tool results</span>
+        </div>
+      )}
+
+      <button
+        onClick={() => setShowMessages(!showMessages)}
+        className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+      >
+        {showMessages ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {showMessages ? "Hide" : "View"} messages sent to LLM ({call.messages.length})
+      </button>
+
+      {showMessages && (
+        <div className="space-y-2 mt-1">
+          {call.messages.map((msg, i) => (
+            <LLMMessageCard key={i} message={msg} index={i} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LLMMessageCard({ message, index }: { message: { role: string; content: string | null }; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const rawContent = message.content || "(empty)";
+
+  // Pretty-print JSON for tool messages
+  let content = rawContent;
+  if (message.role === "tool" && rawContent !== "(empty)") {
+    try {
+      content = JSON.stringify(JSON.parse(rawContent), null, 2);
+    } catch {
+      content = rawContent;
+    }
+  }
+
+  const isLong = content.length > 300;
+  const displayContent = expanded || !isLong ? content : content.slice(0, 300) + "...";
+
+  const roleBadgeClass: Record<string, string> = {
+    system: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+    user: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    assistant: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    tool: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  };
+
+  return (
+    <div className="bg-secondary/70 rounded p-2.5 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground font-mono">#{index + 1}</span>
+          <span className={cn(
+            "text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wider",
+            roleBadgeClass[message.role] || "bg-secondary text-muted-foreground"
+          )}>{message.role}</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground font-mono">~{Math.ceil(rawContent.length / 4)} tokens</span>
+      </div>
+      <pre className="text-[11px] text-foreground/80 font-mono whitespace-pre-wrap break-words leading-relaxed max-h-[400px] overflow-y-auto">{displayContent}</pre>
+      {isLong && (
+        <button onClick={() => setExpanded(!expanded)} className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline">
+          {expanded ? "Show less" : "Show full content"}
+        </button>
       )}
     </div>
   );

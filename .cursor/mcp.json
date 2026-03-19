@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "google-sheets": {
+      "command": "/Users/vyaparapp/.local/bin/uvx",
+      "args": ["mcp-google-sheets@latest"],
+      "env": {
+        "SERVICE_ACCOUNT_PATH": "/Users/vyaparapp/Downloads/smb-analytics-sheets-e1d67924bc2e.json",
+        "DRIVE_FOLDER_ID": "1onZcq0AIUo-9O_Cc6b9CWN9JGYgYTs4p"
+      }
+    }
+  }
+}
