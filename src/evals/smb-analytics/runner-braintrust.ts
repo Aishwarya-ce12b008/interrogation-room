@@ -58,9 +58,9 @@ async function callAgent(
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   async function chatWithRetry(
-    params: Parameters<typeof openai.chat.completions.create>[0],
+    params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
     maxRetries = 5,
-  ) {
+  ): Promise<OpenAI.Chat.ChatCompletion> {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         return await openai.chat.completions.create(params);
