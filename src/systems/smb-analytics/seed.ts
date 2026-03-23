@@ -58,7 +58,7 @@ async function batchInsert(table: string, rows: Record<string, unknown>[], batch
 
 // ─── SHARMA ELECTRONICS ─────────────────────────────────────────────────────
 
-async function seedSharma(merchantId: string) {
+async function seedApex(merchantId: string) {
   // --- Parties ---
   const customers = [
     { id: randomId(), merchant_id: merchantId, name: "Rajesh Gupta", type: "customer", business_type: "electronics", business_vertical: "retailer", phone: "9811234567", city: "Delhi", credit_terms_days: 30 },
@@ -474,7 +474,7 @@ async function seedSharma(merchantId: string) {
 
 // ─── NOOR COLLECTIONS ───────────────────────────────────────────────────────
 
-async function seedNoor(merchantId: string) {
+async function seedLuxe(merchantId: string) {
   const customers = [
     { id: randomId(), merchant_id: merchantId, name: "Fatima Textiles", type: "customer", business_type: "apparel", business_vertical: "wholesaler", phone: "9925001111", city: "Surat", credit_terms_days: 45 },
     { id: randomId(), merchant_id: merchantId, name: "Zara Fashion House", type: "customer", business_type: "apparel", business_vertical: "retailer", phone: "9925002222", city: "Surat", credit_terms_days: 30 },
@@ -767,7 +767,7 @@ async function seedNoor(merchantId: string) {
 
 // ─── RAJU'S KITCHEN ─────────────────────────────────────────────────────────
 
-async function seedRaju(merchantId: string) {
+async function seedUrbanPlate(merchantId: string) {
   const customers = [
     { id: randomId(), merchant_id: merchantId, name: "Walk-in Customer", type: "customer", business_type: "food_service", business_vertical: "consumer", phone: null, city: "Bengaluru", credit_terms_days: 0 },
     { id: randomId(), merchant_id: merchantId, name: "Swiggy Orders", type: "customer", business_type: "food_delivery", business_vertical: "aggregator", phone: null, city: "Bengaluru", credit_terms_days: 7 },
@@ -1044,16 +1044,16 @@ export async function seedAll() {
 
   // Insert merchants
   const merchants = [
-    { id: randomId(), name: "Sharma Electronics", business_type: "electronics", business_vertical: "retailer", city: "Delhi", gstin: "07AABCS1234P1Z5" },
-    { id: randomId(), name: "Noor Collections", business_type: "apparel", business_vertical: "retailer", city: "Surat", gstin: "24AABCN5678Q1Z3" },
-    { id: randomId(), name: "Raju's Kitchen", business_type: "food_service", business_vertical: "restaurant", city: "Bengaluru", gstin: "29AABCR9012R1Z1" },
+    { id: randomId(), name: "Apex Electronics", business_type: "electronics", business_vertical: "retailer", city: "Delhi", gstin: "07AABCS1234P1Z5" },
+    { id: randomId(), name: "Luxe Apparel Co.", business_type: "apparel", business_vertical: "retailer", city: "Surat", gstin: "24AABCN5678Q1Z3" },
+    { id: randomId(), name: "Urban Plate", business_type: "food_service", business_vertical: "restaurant", city: "Bengaluru", gstin: "29AABCR9012R1Z1" },
   ];
   await batchInsert("merchants", merchants);
 
   // Seed each merchant
-  await seedSharma(merchants[0].id);
-  await seedNoor(merchants[1].id);
-  await seedRaju(merchants[2].id);
+  await seedApex(merchants[0].id);
+  await seedLuxe(merchants[1].id);
+  await seedUrbanPlate(merchants[2].id);
 
   return merchants;
 }

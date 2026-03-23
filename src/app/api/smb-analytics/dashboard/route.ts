@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const merchant = await getMerchantById(merchantCardId);
     if (!merchant) {
-      return NextResponse.json({ error: "Merchant not found. Have you run the seed?" }, { status: 404 });
+      return NextResponse.json({ error: "Business not found. Have you run the seed?" }, { status: 404 });
     }
 
     const kpis = await getDashboardKPIs(merchant.id);

@@ -14,10 +14,11 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronRight,
+  Plug,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
-import { MessageDebugInfo, ToolCall as ToolCallType, LLMCallInfo } from "@/lib/agents";
+import { MessageDebugInfo, ToolCall as ToolCallType, LLMCallInfo, McpDebugInfo } from "@/lib/agents";
 
 interface ObservabilityPanelProps {
   debug: MessageDebugInfo | null;
@@ -31,12 +32,13 @@ interface ObservabilityPanelProps {
 const COST_PER_TOKEN = 0.00000015;
 const CONTEXT_WINDOW = 128_000;
 
-type TabId = "agent" | "prompt" | "tools" | "rag" | "tokens";
+type TabId = "agent" | "prompt" | "tools" | "mcp" | "rag" | "tokens";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "agent", label: "Agent", icon: <Brain className="w-3.5 h-3.5" /> },
   { id: "prompt", label: "Prompt", icon: <FileText className="w-3.5 h-3.5" /> },
   { id: "tools", label: "Tools", icon: <Wrench className="w-3.5 h-3.5" /> },
+  { id: "mcp", label: "MCP", icon: <Plug className="w-3.5 h-3.5" /> },
   { id: "rag", label: "RAG", icon: <Database className="w-3.5 h-3.5" /> },
   { id: "tokens", label: "Pricing", icon: <Zap className="w-3.5 h-3.5" /> },
 ];
@@ -53,7 +55,7 @@ export function ObservabilityPanel({
   // When a step is clicked, switch to the corresponding tab
   useEffect(() => {
     if (expandSection) {
-      const tabMap: Record<string, TabId> = { tools: "tools", rag: "rag", tokens: "tokens", prompt: "prompt" };
+      const tabMap: Record<string, TabId> = { tools: "tools", mcp: "mcp", rag: "rag", tokens: "tokens", prompt: "prompt" };
       if (tabMap[expandSection]) setActiveTab(tabMap[expandSection]);
       onSectionViewed?.();
     }
@@ -122,17 +124,6 @@ export function ObservabilityPanel({
         {/* ===== AGENT TAB ===== */}
         {activeTab === "agent" && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className={cn("w-3 h-3 rounded-full", debug.agentId === "goody" ? "bg-emerald-500" : debug.agentId === "baddy" ? "bg-red-500" : "bg-purple-500")} />
-              <span className="text-base font-semibold text-foreground capitalize">{debug.agentId || "Agent"}</span>
-              {debug.action && debug.action !== "none" && (
-                <>
-                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">{getActionLabel(debug.action)}</span>
-                </>
-              )}
-            </div>
-
             <div className="grid grid-cols-2 gap-2 text-xs">
               <MetaCell label="Model" value={debug.model || "gpt-4.1-mini"} mono />
               <MetaCell label="Temperature" value={String(debug.temperature ?? "—")} mono />
@@ -164,6 +155,11 @@ export function ObservabilityPanel({
               <p className="text-sm text-muted-foreground italic py-8 text-center">No tool calls this turn</p>
             )}
           </div>
+        )}
+
+        {/* ===== MCP TAB ===== */}
+        {activeTab === "mcp" && (
+          <McpTabContent mcpInfo={debug.mcpInfo} toolCalls={debug.toolCalls} />
         )}
 
         {/* ===== RAG TAB ===== */}
@@ -510,6 +506,136 @@ function RagChunkCard({ chunk, index }: { chunk: { id: string; score: number; ca
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function McpServerCard({ server }: { server: McpDebugInfo["servers"][number] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-secondary/50 rounded-lg p-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-sm font-medium text-foreground font-mono">{server.name}</span>
+        </div>
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium uppercase tracking-wider">
+          {server.status}
+        </span>
+      </div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1.5"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {server.toolCount} tool{server.toolCount !== 1 ? "s" : ""} discovered
+      </button>
+      {expanded && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {server.tools.map((tool) => (
+            <span key={tool} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-secondary text-foreground/70 border border-border">
+              {tool}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function McpTabContent({ mcpInfo, toolCalls }: { mcpInfo?: McpDebugInfo; toolCalls?: ToolCallType[] }) {
+  if (!mcpInfo) {
+    return (
+      <div className="space-y-4">
+        <div className="text-sm text-muted-foreground italic py-8 text-center">
+          No MCP servers configured for this system
+        </div>
+      </div>
+    );
+  }
+
+  const mcpCalls = (toolCalls || []).filter(tc => tc.name.startsWith("mcp__"));
+  const localCalls = (toolCalls || []).filter(tc => !tc.name.startsWith("mcp__"));
+
+  return (
+    <div className="space-y-4">
+      {/* Overview */}
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <MetaCell label="Servers" value={String(mcpInfo.servers.length)} mono />
+        <MetaCell label="MCP tools" value={String(mcpInfo.totalTools)} mono />
+        <MetaCell label="MCP calls" value={String(mcpInfo.mcpToolCalls)} mono />
+      </div>
+
+      {/* Servers */}
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-2 font-medium">Connected servers</div>
+        <div className="space-y-2">
+          {mcpInfo.servers.map((server) => (
+            <McpServerCard key={server.name} server={server} />
+          ))}
+        </div>
+      </div>
+
+      {/* Tool call breakdown */}
+      {(toolCalls && toolCalls.length > 0) && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-2 font-medium">
+            Tool calls this turn ({toolCalls.length} total)
+          </div>
+
+          <div className="h-2.5 bg-secondary rounded-full overflow-hidden flex mb-2">
+            {localCalls.length > 0 && (
+              <div
+                className="h-full bg-blue-500 transition-all"
+                style={{ width: `${(localCalls.length / toolCalls.length) * 100}%` }}
+              />
+            )}
+            {mcpCalls.length > 0 && (
+              <div
+                className="h-full bg-purple-500 transition-all"
+                style={{ width: `${(mcpCalls.length / toolCalls.length) * 100}%` }}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              Local ({localCalls.length})
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-purple-500" />
+              MCP ({mcpCalls.length})
+            </span>
+          </div>
+
+          {mcpCalls.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-medium">MCP tool calls</div>
+              {mcpCalls.map((tc, i) => {
+                const shortName = tc.name.replace(/^mcp__[^_]+__/, "");
+                const serverName = tc.name.match(/^mcp__([^_]+)__/)?.[1] || "unknown";
+                return (
+                  <div key={i} className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {tc.status === "success"
+                          ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                          : <XCircle className="w-3.5 h-3.5 text-red-500" />}
+                        <span className="text-xs font-medium text-foreground font-mono">{shortName}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono">{serverName}</span>
+                      </div>
+                      {tc.durationMs !== undefined && (
+                        <span className="text-[10px] text-muted-foreground font-mono">{tc.durationMs}ms</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

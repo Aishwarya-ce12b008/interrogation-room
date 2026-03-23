@@ -89,7 +89,7 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
         onClick={onClick}
         style={{ animationDelay: `${index * 50}ms` }}
         className={cn(
-          "animate-float-in w-full text-left rounded-2xl transition-all duration-200 group overflow-hidden",
+          "animate-float-in w-full h-full text-left rounded-2xl transition-all duration-200 group overflow-hidden flex flex-col",
           "hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/20 hover:-translate-y-0.5",
           "active:scale-[0.98] active:shadow-sm",
           selected
@@ -97,22 +97,18 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
             : "bg-card border border-border hover:border-transparent"
         )}
       >
-        {/* Severity accent strip */}
         <div className={cn("h-1 w-full bg-gradient-to-r", config.accent)} />
 
-        <div className="p-4">
+        <div className="p-4 flex flex-col flex-1">
           {/* Avatar + Name row */}
           <div className="flex items-start gap-3 mb-3">
-            {/* Avatar */}
             <div className={cn(
-              "w-11 h-11 rounded-xl flex items-center justify-center shrink-0 font-semibold text-sm tracking-wide transition-colors",
+              "w-11 h-11 rounded-xl flex items-center justify-center shrink-0 font-semibold text-sm tracking-wide",
               selected
                 ? cn("bg-gradient-to-br text-white", config.accent)
-                : "bg-secondary text-muted-foreground group-hover:bg-gradient-to-br group-hover:text-white",
-              !selected && cn("group-hover:" + config.accent.split(" ")[0])
+                : "bg-secondary text-muted-foreground"
             )}>
-              <span className={cn(!selected && "group-hover:hidden")}>{getInitials(suspect.name)}</span>
-              <span className={cn("hidden", !selected && "group-hover:inline")}>{getInitials(suspect.name)}</span>
+              {getInitials(suspect.name)}
             </div>
 
             <div className="min-w-0 flex-1">
@@ -124,7 +120,6 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
               </div>
             </div>
 
-            {/* Severity badge */}
             <div className={cn(
               "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest shrink-0",
               config.bg, config.text,
@@ -134,7 +129,7 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
             </div>
           </div>
 
-          {/* Crime - the main attraction */}
+          {/* Crime */}
           <div className={cn(
             "rounded-xl px-3 py-2.5 mb-3",
             selected ? "bg-white/60 dark:bg-white/5" : "bg-secondary/60 dark:bg-secondary/40"
@@ -149,20 +144,18 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
           </div>
 
           {/* Bottom meta row */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mt-auto">
             <span className="text-xs text-muted-foreground truncate">{suspect.occupation}</span>
-            <div className="flex items-center gap-2">
-              {suspect.priorCount > 0 ? (
-                <div className="flex items-center gap-1 text-[11px] font-medium text-red-600 dark:text-red-400">
-                  <History className="w-3 h-3" />
-                  {suspect.priorCount} prior{suspect.priorCount > 1 ? "s" : ""}
-                </div>
-              ) : (
-                <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                  Clean
-                </div>
-              )}
-            </div>
+            {suspect.priorCount > 0 ? (
+              <div className="flex items-center gap-1 text-[11px] font-medium text-red-600 dark:text-red-400">
+                <History className="w-3 h-3" />
+                {suspect.priorCount} prior{suspect.priorCount > 1 ? "s" : ""}
+              </div>
+            ) : (
+              <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                Clean
+              </div>
+            )}
           </div>
         </div>
       </button>
@@ -172,8 +165,6 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
   // Full card (used in chat view) - more like a dossier
   return (
     <div className="rounded-2xl overflow-hidden border border-border shadow-sm dark:shadow-none mb-4">
-      {/* Header band */}
-      <div className={cn("h-1.5 bg-gradient-to-r", config.accent)} />
       <div className="bg-card p-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -210,8 +201,8 @@ export function SuspectCard({ suspect, selected, onClick, compact, index = 0 }: 
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-0.5 font-medium">Charge</div>
             <div className={cn("font-semibold text-sm", config.text)}>
               {suspect.currentCrime}
-              {suspect.caseAmount && <span className="text-muted-foreground font-normal text-xs ml-1">({suspect.caseAmount})</span>}
             </div>
+            {suspect.caseAmount && <div className="text-muted-foreground font-normal text-xs mt-0.5">{suspect.caseAmount}</div>}
           </div>
           <div className="bg-secondary/50 dark:bg-secondary/30 rounded-xl px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-0.5 font-medium">Max sentence</div>

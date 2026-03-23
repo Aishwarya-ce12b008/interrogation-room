@@ -189,7 +189,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "send_email",
-      description: "Send an email to the merchant with insights, analysis, or action items. The merchant's email is already on file. Use markdown tables for comparisons and bullet points for insights.",
+      description: "Send an email to the business owner with insights, analysis, or action items. Their email is already on file. Use markdown tables for comparisons and bullet points for insights.",
       parameters: {
         type: "object",
         properties: {
@@ -229,7 +229,7 @@ export async function executeTool(
   context: unknown
 ): Promise<string> {
   const merchant = context as Merchant | undefined;
-  if (!merchant?.id) return "Error: No merchant selected.";
+  if (!merchant?.id) return "Error: No business selected.";
   const merchantId = merchant.id;
 
   switch (name) {

@@ -7,6 +7,16 @@
         "SERVICE_ACCOUNT_PATH": "/Users/vyaparapp/Downloads/smb-analytics-sheets-e1d67924bc2e.json",
         "DRIVE_FOLDER_ID": "1onZcq0AIUo-9O_Cc6b9CWN9JGYgYTs4p"
       }
+    },
+    "mcp-server-chart": {
+      "command": "npx",
+      "args": ["-y", "@antv/mcp-server-chart"]
+    },
+    "langfuse": {
+      "url": "https://cloud.langfuse.com/api/public/mcp",
+      "headers": {
+        "Authorization": "Basic cGstbGYtNWE3ZTMyMjktYjM3Mi00ZGI3LWJjZjctNzg4NWNlYjFhNjA1OnNrLWxmLTlmMDZlMDQzLTAzZjItNDY5MC1iMGIyLTUzY2VlMTViOGNkNw=="
+      }
     }
   }
 }

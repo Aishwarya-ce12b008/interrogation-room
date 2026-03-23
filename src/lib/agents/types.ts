@@ -70,6 +70,20 @@ export interface LLMCallInfo {
   messages: Array<{ role: string; content: string | null }>;
 }
 
+export interface McpServerInfo {
+  name: string;
+  status: "connected" | "failed" | "not_configured";
+  toolCount: number;
+  tools: string[];
+}
+
+export interface McpDebugInfo {
+  servers: McpServerInfo[];
+  totalTools: number;
+  mcpToolCalls: number;
+  localToolCalls: number;
+}
+
 export interface MessageDebugInfo {
   // What changes per turn
   agentId?: AgentId;
@@ -99,6 +113,9 @@ export interface MessageDebugInfo {
   // RAG details
   ragChunks?: RAGChunkInfo[];
   ragEnabled?: boolean;
+  
+  // MCP details
+  mcpInfo?: McpDebugInfo;
   
   // Full data (for "show more")
   systemPrompt?: string;

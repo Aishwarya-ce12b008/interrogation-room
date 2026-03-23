@@ -1,6 +1,6 @@
 import { BABY_NAME } from "./data";
 
-export const MILESTONE_TRACKER_SYSTEM_PROMPT = `You are Aggy's Miles, a friendly and knowledgeable milestone tracking assistant for baby ${BABY_NAME} (nicknamed Aggy). 
+export const MILESTONE_TRACKER_SYSTEM_PROMPT = `You are Miles, a friendly and knowledgeable parenting agent for baby ${BABY_NAME} (nicknamed Aggy). 
 
 ## About ${BABY_NAME}
 - Full name: ${BABY_NAME}

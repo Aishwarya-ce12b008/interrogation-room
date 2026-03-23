@@ -16,9 +16,10 @@ interface ChatMessageProps {
   debug?: MessageDebugInfo;
   isStreaming?: boolean;
   onOpenDebug?: () => void;
+  onBadgeClick?: (section: string) => void;
 }
 
-export function ChatMessage({ role, content, agent, agentName, isTransition, debug, isStreaming, onOpenDebug }: ChatMessageProps) {
+export function ChatMessage({ role, content, agent, agentName, isTransition, debug, isStreaming, onOpenDebug, onBadgeClick }: ChatMessageProps) {
   const isUser = role === "user";
 
   if (isTransition) return null;
@@ -32,41 +33,33 @@ export function ChatMessage({ role, content, agent, agentName, isTransition, deb
     >
       <div
         className={cn(
-          "relative max-w-[80%] rounded-2xl px-4 py-3",
+          "relative",
           isUser
-            ? "bg-secondary text-secondary-foreground rounded-br-md"
-            : "bg-card border border-border rounded-bl-md"
+            ? "max-w-[80%] rounded-2xl px-4 py-3 bg-secondary text-secondary-foreground rounded-br-md"
+            : "max-w-[80%] py-2"
         )}
       >
         {!isUser && agent && (
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <div className="flex items-center gap-2">
-              <div className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                agent === "goody" ? "bg-emerald-500" :
-                agent === "baddy" ? "bg-red-500" :
-                "bg-purple-500"
-              )} />
-              <span
-                className={cn(
-                  "text-xs font-semibold uppercase tracking-widest",
-                  agent === "goody"
-                    ? "text-emerald-600 dark:text-emerald-500"
-                    : agent === "baddy"
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-purple-600 dark:text-purple-400"
-                )}
-              >
-                {agentName || agent}
-              </span>
-            </div>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span
+              className={cn(
+                "text-[11px] font-semibold uppercase tracking-widest",
+                agent === "goody"
+                  ? "text-emerald-600 dark:text-emerald-500"
+                  : agent === "baddy"
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-purple-600 dark:text-purple-400"
+              )}
+            >
+              {agentName || agent}
+            </span>
             {debug && onOpenDebug && (
               <button
                 onClick={onOpenDebug}
-                className="p-1 rounded-lg text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted/50 transition-colors"
+                className="p-1 rounded-lg text-muted-foreground/20 hover:text-muted-foreground hover:bg-muted/50 transition-colors"
                 title="View debug info"
               >
-                <Eye className="w-3.5 h-3.5" />
+                <Eye className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -84,7 +77,7 @@ export function ChatMessage({ role, content, agent, agentName, isTransition, deb
         </div>
 
         {!isUser && debug && !isStreaming && (
-          <SkillBadges debug={debug} />
+          <SkillBadges debug={debug} onBadgeClick={onBadgeClick} />
         )}
       </div>
     </div>

@@ -5,7 +5,7 @@ function getResend() {
   if (!key) throw new Error("RESEND_API_KEY is not set");
   return new Resend(key);
 }
-const FROM_EMAIL = process.env.EMAIL_FROM || "SMB Advisor <onboarding@resend.dev>";
+const FROM_EMAIL = process.env.EMAIL_FROM || "Enterprise Intelligence <onboarding@resend.dev>";
 
 function applyInlineFormatting(text: string): string {
   return text
@@ -111,7 +111,7 @@ function buildEmailHtml(merchantName: string, subject: string, bodyHtml: string)
 
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:28px 32px;">
-      <p style="margin:0 0 4px;color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">SMB Analytics Advisor</p>
+      <p style="margin:0 0 4px;color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Enterprise Intelligence</p>
       <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;line-height:1.3;">${subject}</h1>
       <p style="margin:8px 0 0;color:#64748b;font-size:13px;">${merchantName} &middot; ${today}</p>
     </div>
@@ -130,13 +130,13 @@ function buildEmailHtml(merchantName: string, subject: string, bodyHtml: string)
     <!-- CTA hint -->
     <div style="padding:0 32px 24px;">
       <div style="padding:14px 18px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;">
-        <p style="margin:0;font-size:13px;color:#166534;line-height:1.5;">Have questions about these numbers? Just reply to your advisor in the chat — happy to dig deeper into any of these.</p>
+        <p style="margin:0;font-size:13px;color:#166534;line-height:1.5;">Have questions about these numbers? Head back to the chat — happy to dig deeper into any of these.</p>
       </div>
     </div>
 
     <!-- Footer -->
     <div style="padding:16px 32px;border-top:1px solid #e2e8f0;background:#f8fafc;">
-      <p style="margin:0;color:#94a3b8;font-size:11px;line-height:1.5;">Sent by your SMB Analytics Advisor &middot; Powered by AI</p>
+      <p style="margin:0;color:#94a3b8;font-size:11px;line-height:1.5;">Sent by Enterprise Intelligence &middot; Powered by AI</p>
     </div>
   </div>
 </body>

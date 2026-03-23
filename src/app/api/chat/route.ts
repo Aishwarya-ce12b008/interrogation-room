@@ -2,10 +2,14 @@ import { NextRequest } from "next/server";
 import { config as dotenvConfig } from "dotenv";
 import path from "path";
 import OpenAI from "openai";
+import { observeOpenAI } from "@langfuse/openai";
 import { Pinecone } from "@pinecone-database/pinecone";
 
 // Force .env.local to override any system env vars
 dotenvConfig({ path: path.resolve(process.cwd(), ".env.local"), override: true });
+
+import { initLangfuse } from "@/lib/langfuse";
+initLangfuse();
 import {
   AgentId,
   AgentResponse,
@@ -16,6 +20,7 @@ import {
   ToolCall,
   AgentConfig,
   LLMCallInfo,
+  McpDebugInfo,
 } from "@/lib/agents";
 import { getSystem, type SystemDefinition } from "@/systems/registry";
 import { getMcpClientManager, type McpClientManager } from "@/lib/mcp/client";
@@ -209,6 +214,70 @@ const TOOL_LABELS: Record<string, string> = {
   send_email: "Sending email",
 };
 
+function buildMcpPromptGuidance(mcpManager?: McpClientManager): string {
+  if (!mcpManager || mcpManager.connectedCount === 0) return "";
+  const servers = mcpManager.getServerInfoList();
+  const serverNames = servers.map(s => s.name);
+
+  let guidance = `
+## EXTERNAL TOOLS (MCP)
+You have access to external services via MCP tools. These are REAL integrations — use them when the user asks.
+
+**Rules for MCP tools:**
+- Tool names are prefixed with \`mcp__<server>__<tool>\`. Call them exactly as they appear in your function list.
+- When the user asks to "create a Notion page", "post to Slack", "add to sheets", etc. — USE the corresponding MCP tool. Do NOT substitute with \`send_email\` or any other local tool.
+- Only call \`send_email\` when the user explicitly asks for an EMAIL. "Send to Slack" or "create a Notion page" are NOT email requests.
+- If a tool call fails, tell the user plainly and suggest an alternative.
+`;
+
+  if (serverNames.includes("notion")) {
+    guidance += `
+### Notion workflow
+To create a page in Notion, you MUST follow this two-step process:
+1. **First**, call \`mcp__notion__API-post-search\` with a query (e.g. the business name or "Enterprise Intelligence") to find an existing page or database to use as the parent.
+   - Pass: \`{"query": "search term", "filter": {"property": "object", "value": "page"}}\`
+2. **Then**, call \`mcp__notion__API-post-page\` with the parent ID from the search results.
+   - Pass: \`{"parent": {"page_id": "<id from search>"}, "properties": {"title": [{"text": {"content": "Your Page Title"}}]}, "children": [...]}\`
+   - For page content, use block objects in \`children\`: \`{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": "text here"}}]}}\`
+   - For headings: \`{"object": "block", "type": "heading_2", "heading_2": {"rich_text": [{"type": "text", "text": {"content": "heading"}}]}}\`
+   - For bullet items: \`{"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": "item"}}]}}\`
+- If search returns no results, create the page using \`mcp__notion__API-post-page\` with \`{"parent": {"page_id": "root"}, ...}\` and tell the user it was created at the workspace root.
+- NEVER skip the search step. NEVER ask the user for a page ID — find it yourself.
+`;
+  }
+
+  if (serverNames.includes("slack")) {
+    guidance += `
+### Slack workflow
+- To post a message, first call \`mcp__slack__slack_list_channels\` to find the right channel, then call \`mcp__slack__slack_post_message\` with the channel ID.
+- For DMs or personal updates, look for a channel matching the business name or use a general channel.
+- NEVER ask the user for a channel ID — find it yourself by listing channels.
+`;
+  }
+
+  if (serverNames.includes("google-sheets")) {
+    guidance += `
+### Google Sheets workflow
+- Use the google-sheets MCP tools to create or update spreadsheets when the user asks for data exports or reports in a sheet.
+`;
+  }
+
+  return guidance;
+}
+
+function buildMcpDebugInfo(mcpManager?: McpClientManager, toolCalls?: ToolCall[]): McpDebugInfo | undefined {
+  if (!mcpManager || mcpManager.connectedCount === 0) return undefined;
+  const servers = mcpManager.getServerInfoList();
+  const mcpToolCalls = (toolCalls || []).filter(tc => mcpManager.isMcpTool(tc.name)).length;
+  const localToolCalls = (toolCalls || []).length - mcpToolCalls;
+  return {
+    servers,
+    totalTools: mcpManager.toolCount,
+    mcpToolCalls,
+    localToolCalls,
+  };
+}
+
 // NON-STREAMING call - just to get the decision (action field)
 async function callAgentForDecision(
   openai: OpenAI,
@@ -240,6 +309,10 @@ async function callAgentForDecision(
   if (subjectContext) {
     augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${subjectContext}`;
   }
+  const mcpGuidance = buildMcpPromptGuidance(mcpManager);
+  if (mcpGuidance) {
+    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${mcpGuidance}`;
+  }
 
   const baseMessages: FormattedMessage[] = [
     { role: "system" as "user", content: augmentedSystemPrompt },
@@ -254,7 +327,7 @@ async function callAgentForDecision(
   const call1Start = Date.now();
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_decide",
-    label: "LLM call — choosing action",
+    label: "Analyzing message",
     status: "running",
   })));
 
@@ -272,7 +345,7 @@ async function callAgentForDecision(
   const hasTools = !!initialResponse.choices[0]?.message?.tool_calls?.length;
 
   llmCalls.push({
-    label: hasTools ? "LLM call — choosing action" : "LLM call — generating response",
+    label: hasTools ? "Analyzed message" : "Generated response",
     promptTokens: call1Usage?.prompt_tokens || 0,
     completionTokens: call1Usage?.completion_tokens || 0,
     durationMs: call1Duration,
@@ -281,9 +354,8 @@ async function callAgentForDecision(
 
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_decide",
-    label: hasTools ? "LLM call — chose action" : "LLM call — generated response",
+    label: hasTools ? "Analyzed message" : "Generated response",
     status: "done",
-    detail: `${call1Usage?.prompt_tokens || 0}+${call1Usage?.completion_tokens || 0} tokens · ${(call1Duration / 1000).toFixed(1)}s`,
     durationMs: call1Duration,
   })));
 
@@ -312,7 +384,9 @@ async function callAgentForDecision(
         ? (mcpManager!.getToolLabel(toolName) || toolName)
         : (TOOL_LABELS[toolName] || toolName);
       const stepId = `tool_${toolName}_${roundIndex}`;
-      const stepLabel = `Tool call — ${isMcp ? toolName.replace(/^mcp__[^_]+__/, "") : toolName}`;
+      const isRag = toolName === "search_knowledge_base";
+      const stepTag = isRag ? "RAG" : isMcp ? "MCP call" : "Tool call";
+      const stepLabel = `${friendlyLabel} (${stepTag})`;
       const toolStart = Date.now();
 
       await writer.write(encoder.encode(sseEvent("step", {
@@ -322,7 +396,7 @@ async function callAgentForDecision(
       })));
 
       let toolResult: string;
-      if (toolName === "search_knowledge_base") {
+      if (isRag) {
         const chunks = await retrieveContext(openai, toolArgs.query as string, 5);
         toolResult = chunks.length > 0
           ? buildContextString(chunks)
@@ -341,7 +415,6 @@ async function callAgentForDecision(
         id: stepId,
         label: stepLabel,
         status: "done",
-        detail: `~${resultTokens} tokens · ${(toolDuration / 1000).toFixed(1)}s`,
         durationMs: toolDuration,
       })));
 
@@ -373,13 +446,11 @@ async function callAgentForDecision(
       toolResults: toolResultMessages,
     })));
 
-    // Call LLM again with tool results — it may request more tools or produce a final response
     const nextCallStart = Date.now();
     await writer.write(encoder.encode(sseEvent("step", {
       id: `llm_round_${roundIndex + 1}`,
-      label: `LLM call — processing tool results`,
+      label: "Reviewing tool results",
       status: "running",
-      detail: `+${roundToolResultTokens} tokens from tool results`,
     })));
 
     const nextResponse = await openai.chat.completions.create({
@@ -396,7 +467,7 @@ async function callAgentForDecision(
     currentHasTools = !!nextResponse.choices[0]?.message?.tool_calls?.length;
 
     llmCalls.push({
-      label: currentHasTools ? `LLM call — chose action (round ${roundIndex + 1})` : "LLM call — generated response",
+      label: currentHasTools ? "Reviewed results, picking next action" : "Composing response",
       promptTokens: nextUsage?.prompt_tokens || 0,
       completionTokens: nextUsage?.completion_tokens || 0,
       durationMs: nextCallDuration,
@@ -406,9 +477,8 @@ async function callAgentForDecision(
 
     await writer.write(encoder.encode(sseEvent("step", {
       id: `llm_round_${roundIndex + 1}`,
-      label: currentHasTools ? `LLM call — chose action (round ${roundIndex + 1})` : "LLM call — generated response",
+      label: currentHasTools ? "Reviewed results, picking next action" : "Composing response",
       status: "done",
-      detail: `${nextUsage?.prompt_tokens || 0}+${nextUsage?.completion_tokens || 0} tokens · ${(nextCallDuration / 1000).toFixed(1)}s`,
       durationMs: nextCallDuration,
     })));
 
@@ -457,6 +527,7 @@ async function callAgentForDecision(
       agentId: agent, action: parsedResponse.action, transitionNote: parsedResponse.transitionNote, timestamp,
       tokenUsage, tokenBreakdown: { basePromptTokens, suspectContextTokens, ragContextTokens: 0, conversationTokens, completionTokens: tokenUsage.completionTokens },
       messageCount: messages.length, toolCalls, llmCalls, ragChunks: [], ragEnabled: false,
+      mcpInfo: buildMcpDebugInfo(mcpManager, toolCalls),
       systemPrompt: augmentedSystemPrompt, conversationHistory, model, temperature: config.temperature, maxTokens, promptSent: promptSummary,
     },
   };
@@ -493,6 +564,10 @@ async function streamAgentResponse(
   if (subjectContext) {
     augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${subjectContext}`;
   }
+  const mcpGuidance = buildMcpPromptGuidance(mcpManager);
+  if (mcpGuidance) {
+    augmentedSystemPrompt = `${augmentedSystemPrompt}\n\n${mcpGuidance}`;
+  }
 
   type OAIMessage = { role: string; content: string | null; tool_calls?: unknown; tool_call_id?: string };
   const streamMessages: OAIMessage[] = [
@@ -508,7 +583,7 @@ async function streamAgentResponse(
   const call1Start = Date.now();
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_decide",
-    label: "LLM call — choosing action",
+    label: "Analyzing message",
     status: "running",
   })));
 
@@ -524,7 +599,7 @@ async function streamAgentResponse(
   const hasTools = !!toolDetection.choices[0]?.message?.tool_calls?.length;
 
   llmCalls.push({
-    label: hasTools ? "LLM call — choosing action" : "LLM call — generating response",
+    label: hasTools ? "Analyzed message" : "Generated response",
     promptTokens: call1Usage?.prompt_tokens || 0,
     completionTokens: call1Usage?.completion_tokens || 0,
     durationMs: call1Duration,
@@ -533,9 +608,8 @@ async function streamAgentResponse(
 
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_decide",
-    label: hasTools ? "LLM call — chose action" : "LLM call — generated response",
+    label: hasTools ? "Analyzed message" : "Generated response",
     status: "done",
-    detail: `${call1Usage?.prompt_tokens || 0}+${call1Usage?.completion_tokens || 0} tokens · ${(call1Duration / 1000).toFixed(1)}s`,
     durationMs: call1Duration,
   })));
 
@@ -561,7 +635,9 @@ async function streamAgentResponse(
         ? (mcpManager!.getToolLabel(toolName) || toolName)
         : (TOOL_LABELS[toolName] || toolName);
       const stepId = `tool_${toolName}_${roundIndex}`;
-      const stepLabel = `Tool call — ${isMcp ? toolName.replace(/^mcp__[^_]+__/, "") : toolName}`;
+      const isRag = toolName === "search_knowledge_base";
+      const stepTag = isRag ? "RAG" : isMcp ? "MCP call" : "Tool call";
+      const stepLabel = `${friendlyLabel} (${stepTag})`;
       const toolStart = Date.now();
 
       await writer.write(encoder.encode(sseEvent("step", {
@@ -571,7 +647,7 @@ async function streamAgentResponse(
       })));
 
       let toolResult: string;
-      if (toolName === "search_knowledge_base") {
+      if (isRag) {
         const chunks = await retrieveContext(openai, toolArgs.query as string, 5);
         toolResult = chunks.length > 0
           ? buildContextString(chunks)
@@ -591,7 +667,6 @@ async function streamAgentResponse(
         id: stepId,
         label: stepLabel,
         status: "done",
-        detail: `~${resultTokens} tokens · ${(toolDuration / 1000).toFixed(1)}s`,
         durationMs: toolDuration,
       })));
 
@@ -623,13 +698,11 @@ async function streamAgentResponse(
       toolResults: toolResultMessages,
     })));
 
-    // Call LLM again — may request more tools or produce final response
     const nextCallStart = Date.now();
     await writer.write(encoder.encode(sseEvent("step", {
       id: `llm_round_${roundIndex + 1}`,
-      label: `LLM call — processing tool results`,
+      label: "Reviewing tool results",
       status: "running",
-      detail: `+${roundToolResultTokens} tokens from tool results`,
     })));
 
     const nextResponse = await openai.chat.completions.create({
@@ -645,7 +718,7 @@ async function streamAgentResponse(
     currentHasTools = !!nextResponse.choices[0]?.message?.tool_calls?.length;
 
     llmCalls.push({
-      label: currentHasTools ? `LLM call — chose action (round ${roundIndex + 1})` : "LLM call — generated response",
+      label: currentHasTools ? "Reviewed results, picking next action" : "Composing response",
       promptTokens: nextUsage?.prompt_tokens || 0,
       completionTokens: nextUsage?.completion_tokens || 0,
       durationMs: nextCallDuration,
@@ -655,9 +728,8 @@ async function streamAgentResponse(
 
     await writer.write(encoder.encode(sseEvent("step", {
       id: `llm_round_${roundIndex + 1}`,
-      label: currentHasTools ? `LLM call — chose action (round ${roundIndex + 1})` : "LLM call — generated response",
+      label: currentHasTools ? "Reviewed results, picking next action" : "Composing response",
       status: "done",
-      detail: `${nextUsage?.prompt_tokens || 0}+${nextUsage?.completion_tokens || 0} tokens · ${(nextCallDuration / 1000).toFixed(1)}s`,
       durationMs: nextCallDuration,
     })));
 
@@ -667,9 +739,8 @@ async function streamAgentResponse(
   // --- Final LLM Call (streaming): Generate response ---
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_respond",
-    label: "LLM call — generating response",
+    label: "Writing response",
     status: "running",
-    detail: totalToolResultTokens > 0 ? `+${totalToolResultTokens} tokens from tool results` : undefined,
   })));
 
   const streamStart = Date.now();
@@ -743,7 +814,7 @@ async function streamAgentResponse(
   const streamDuration = Date.now() - streamStart;
 
   llmCalls.push({
-    label: "LLM call — generating response",
+    label: "Wrote response",
     promptTokens: tokenUsage.promptTokens,
     completionTokens: tokenUsage.completionTokens,
     durationMs: streamDuration,
@@ -753,9 +824,8 @@ async function streamAgentResponse(
 
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_respond",
-    label: "LLM call — generated response",
+    label: "Wrote response",
     status: "done",
-    detail: `${tokenUsage.promptTokens}+${tokenUsage.completionTokens} tokens · ${(streamDuration / 1000).toFixed(1)}s`,
     durationMs: streamDuration,
   })));
 
@@ -797,6 +867,7 @@ async function streamAgentResponse(
     llmCalls,
     ragChunks: [],
     ragEnabled: false,
+    mcpInfo: buildMcpDebugInfo(mcpManager, toolCalls),
     systemPrompt: augmentedSystemPrompt,
     conversationHistory,
     model,
@@ -854,7 +925,7 @@ export async function POST(request: NextRequest) {
   }
   console.log("API key found, length:", apiKey.length);
 
-  const openai = new OpenAI({ apiKey });
+  const rawOpenai = new OpenAI({ apiKey });
 
   let body: ChatRequest;
   try {
@@ -873,6 +944,20 @@ export async function POST(request: NextRequest) {
   }
 
   const { messages, activeAgent, roomState, suspectId, systemId } = body;
+
+  const sessionId = `${systemId || "interrogation"}-${suspectId || "none"}-${Date.now()}`;
+  const openai = observeOpenAI(rawOpenai, {
+    generationName: `${systemId || "interrogation"}/${activeAgent}`,
+    sessionId,
+    userId: suspectId || undefined,
+    tags: [systemId || "interrogation", activeAgent],
+    generationMetadata: {
+      systemId: systemId || "interrogation",
+      agent: activeAgent,
+      suspectId: suspectId || null,
+      messageCount: messages.length,
+    },
+  });
 
   if (!messages || !activeAgent || !roomState) {
     return new Response(
@@ -940,7 +1025,7 @@ export async function POST(request: NextRequest) {
 
         await writer.write(encoder.encode(sseEvent("step", {
           id: "handoff",
-          label: `Handing off to ${enteringConfig.name}`,
+          label: `Passing to ${enteringConfig.name} (Handoff)`,
           status: "done",
         })));
         const transition = system.generateTransition

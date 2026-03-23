@@ -7,19 +7,12 @@ import { sendWeeklyEmail } from "@/systems/smb-analytics/email";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MERCHANT_EMAIL = "aishy.savi@gmail.com";
+const BUSINESS_EMAIL = "aishy.savi@gmail.com";
 
-const merchantJiNames: Record<string, string> = {
-  "Sharma Electronics": "Sharma ji",
-  "Noor Collections": "Noor ji",
-  "Raju's Kitchen": "Raju ji",
-};
-
-function buildSummaryPrompt(merchantName: string, businessType: string, comparison: WeeklyComparison): string {
-  const jiName = merchantJiNames[merchantName] || merchantName.split(" ")[0] + " ji";
+function buildSummaryPrompt(businessName: string, businessType: string, comparison: WeeklyComparison): string {
   const weekLabel = `${comparison.thisWeek.startDate} to ${comparison.thisWeek.endDate}`;
 
-  return `You're writing a weekly email for ${jiName}, a ${businessType} owner.
+  return `You're writing a weekly email for ${businessName}, a ${businessType} business.
 This covers the week of ${weekLabel}, compared to the previous week.
 
 Here's the data:
@@ -30,7 +23,7 @@ Write exactly 5-7 bullet points. Each bullet must:
 - Be 1-2 lines max
 - Be actionable where possible — tell them what to do or what to watch
 
-Tone: direct, warm, use "${jiName}". No jargon. Use ₹ with lakhs (L) and thousands (K).
+Tone: direct, warm, professional. No jargon. Use ₹ with lakhs (L) and thousands (K).
 
 Return ONLY the bullet points, one per line, each starting with "- ". No greeting, no sign-off, no extra text.`;
 }
@@ -44,7 +37,7 @@ async function generateEmailBullets(
   const response = await openai.chat.completions.create({
     model: "gpt-4.1-mini",
     messages: [
-      { role: "system", content: "You write concise, actionable business insight bullets for small Indian merchants. Output only bullet points." },
+      { role: "system", content: "You write concise, actionable business insight bullets for small and mid-sized businesses. Output only bullet points." },
       { role: "user", content: buildSummaryPrompt(merchantName, businessType, comparison) },
     ],
     max_tokens: 512,
@@ -74,50 +67,48 @@ export async function GET(request: NextRequest) {
 
   const openai = new OpenAI({ apiKey });
 
-  // Fetch all merchants
-  const { data: merchants, error: dbError } = await supabase
+  const { data: businesses, error: dbError } = await supabase
     .from("merchants")
     .select("id, name, business_type, business_vertical");
 
-  if (dbError || !merchants?.length) {
-    return Response.json({ error: "No merchants found", detail: dbError?.message }, { status: 500 });
+  if (dbError || !businesses?.length) {
+    return Response.json({ error: "No businesses found", detail: dbError?.message }, { status: 500 });
   }
 
-  const results: { merchant: string; status: string; error?: string }[] = [];
+  const results: { business: string; status: string; error?: string }[] = [];
 
-  for (const merchant of merchants) {
+  for (const biz of businesses) {
     try {
-      const comparison = await generateWeeklyComparison(merchant.id);
+      const comparison = await generateWeeklyComparison(biz.id);
 
-      // Skip if no revenue data for either week
       if (comparison.revenue.thisWeek === 0 && comparison.revenue.lastWeek === 0) {
-        results.push({ merchant: merchant.name, status: "skipped", error: "No revenue data" });
+        results.push({ business: biz.name, status: "skipped", error: "No revenue data" });
         continue;
       }
 
-      const bullets = await generateEmailBullets(openai, merchant.name, merchant.business_type, comparison);
+      const bullets = await generateEmailBullets(openai, biz.name, biz.business_type, comparison);
 
       if (bullets.length === 0) {
-        results.push({ merchant: merchant.name, status: "skipped", error: "LLM returned no bullets" });
+        results.push({ business: biz.name, status: "skipped", error: "LLM returned no bullets" });
         continue;
       }
 
       const weekLabel = `${comparison.thisWeek.startDate} to ${comparison.thisWeek.endDate}`;
       const result = await sendWeeklyEmail({
-        to: MERCHANT_EMAIL,
-        merchantName: merchant.name,
+        to: BUSINESS_EMAIL,
+        merchantName: biz.name,
         weekRange: weekLabel,
         bullets,
       });
 
       results.push({
-        merchant: merchant.name,
+        business: biz.name,
         status: result.success ? "sent" : "failed",
         error: result.error,
       });
     } catch (err) {
       results.push({
-        merchant: merchant.name,
+        business: biz.name,
         status: "error",
         error: err instanceof Error ? err.message : "Unknown error",
       });

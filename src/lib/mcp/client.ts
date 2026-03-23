@@ -183,6 +183,15 @@ export class McpClientManager {
     for (const s of Array.from(this.servers.values())) n += s.tools.length;
     return n;
   }
+
+  getServerInfoList(): Array<{ name: string; status: "connected"; toolCount: number; tools: string[] }> {
+    return Array.from(this.servers.entries()).map(([name, server]) => ({
+      name,
+      status: "connected" as const,
+      toolCount: server.tools.length,
+      tools: server.tools.map(t => t.name),
+    }));
+  }
 }
 
 // Singleton — survives across requests in long-lived Node.js (local dev).

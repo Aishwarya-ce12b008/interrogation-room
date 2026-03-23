@@ -11,7 +11,7 @@ import { InlineSteps } from "@/components/inline-steps";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RoomState, Message, TokenUsage, MessageDebugInfo, AgentId, PipelineStep, ToolCallRef } from "@/lib/agents";
-import { Send, Eye, EyeOff, ArrowRight, ChevronDown, ArrowLeft } from "lucide-react";
+import { Send, Eye, EyeOff, ArrowRight, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
 import { type SystemDefinition, getSystem } from "@/systems/registry";
 import { type SuspectCardData } from "@/systems/interrogation/types";
 import { type MerchantCardData } from "@/systems/smb-analytics/types";
@@ -196,6 +196,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
   const [hasStarted, setHasStarted] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
   const [showCasePopover, setShowCasePopover] = useState(false);
+  const [showAllSubjects, setShowAllSubjects] = useState(false);
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pendingSteps, setPendingSteps] = useState<PipelineStep[]>([]);
@@ -264,6 +265,15 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showCasePopover]);
 
+  useEffect(() => {
+    if (hasStarted || !subject) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") startSession();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasStarted, subject]);
+
   // Generic SSE fetch + process
   async function processStream(url: string, body: Record<string, unknown>) {
     const handler = createStreamHandler({
@@ -326,7 +336,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
 
     let triggerMessage = `[SESSION START]`;
     if (subject && system?.subjectCardType === "merchant") {
-      triggerMessage = `[SESSION START] Merchant: ${subject.name}`;
+      triggerMessage = `[SESSION START] Business: ${subject.name}`;
     } else if (subject && "currentCrime" in subject) {
       triggerMessage = `[INTERROGATION START: Suspect ${subject.name} brought in for ${(subject as SuspectCardData).currentCrime}]`;
     }
@@ -455,16 +465,37 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {isMerchantSystem
-                ? (subjectCards as MerchantCardData[]).map((m, i) => (
-                    <MerchantCard key={m.id} merchant={m} index={i} selected={subject?.id === m.id} onClick={() => setSubject(m)} />
-                  ))
-                : (subjectCards as SuspectCardData[]).map((s, i) => (
-                    <SuspectCard key={s.id} suspect={s} compact index={i} selected={subject?.id === s.id} onClick={() => setSubject(s)} />
-                  ))
-              }
-            </div>
+            {(() => {
+              const INITIAL_VISIBLE = 6;
+              const hasMore = subjectCards.length > INITIAL_VISIBLE;
+              const visibleCards = showAllSubjects ? subjectCards : subjectCards.slice(0, INITIAL_VISIBLE);
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {isMerchantSystem
+                      ? (visibleCards as MerchantCardData[]).map((m, i) => (
+                          <MerchantCard key={m.id} merchant={m} index={i} selected={subject?.id === m.id} onClick={() => setSubject(m)} />
+                        ))
+                      : (visibleCards as SuspectCardData[]).map((s, i) => (
+                          <SuspectCard key={s.id} suspect={s} compact index={i} selected={subject?.id === s.id} onClick={() => setSubject(s)} />
+                        ))
+                    }
+                  </div>
+                  {hasMore && (
+                    <button
+                      onClick={() => setShowAllSubjects(!showAllSubjects)}
+                      className="mt-4 mx-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-4 py-2 rounded-lg hover:bg-secondary"
+                    >
+                      {showAllSubjects ? (
+                        <>Show less <ChevronUp className="w-3.5 h-3.5" /></>
+                      ) : (
+                        <>Show {subjectCards.length - INITIAL_VISIBLE} more <ChevronDown className="w-3.5 h-3.5" /></>
+                      )}
+                    </button>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </main>
 
@@ -510,8 +541,13 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
                 <ChevronDown className="w-3 h-3" />
               </button>
               {showCasePopover && system.subjectCardType !== "merchant" && "currentCrime" in subject && (
-                <div className="absolute top-full left-0 mt-2 z-50 w-80">
+                <div className="absolute top-full left-0 mt-2 z-50 w-96">
                   <SuspectCard suspect={subject as SuspectCardData} />
+                </div>
+              )}
+              {showCasePopover && system.dashboard && system.subjectCardType === "merchant" && (
+                <div className="absolute top-full left-0 mt-2 z-50">
+                  <KpiStrip merchantCardId={subject.id} apiEndpoint={system.dashboard.apiEndpoint} />
                 </div>
               )}
             </div>
@@ -530,18 +566,17 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
         </div>
       </header>
 
-      {system.dashboard && subject && (
-        <KpiStrip merchantCardId={subject.id} apiEndpoint={system.dashboard.apiEndpoint} />
-      )}
 
       <div className="flex-1 flex overflow-hidden">
         <div className={`flex flex-col ${showPanel ? 'flex-[3]' : 'flex-1'} min-w-0`}>
           <main className="flex-1 overflow-y-auto p-6">
             <div className="max-w-4xl mx-auto space-y-4">
-              {messages.filter(m => !m.isTransition && m.role !== "tool" && !(m.role === "assistant" && m.tool_calls && !m.content)).map((message) => (
+              {messages.filter(m => !m.isTransition && m.role !== "tool" && !(m.role === "assistant" && m.tool_calls && !m.content)).map((message, idx, arr) => {
+                const isFirstAssistant = arr.findIndex(m => m.role === "assistant") === idx;
+                return (
                 <div key={message.id}>
                   {/* Steps timeline above assistant message */}
-                  {message.role === "assistant" && message.steps && message.steps.length > 0 && (
+                  {message.role === "assistant" && !isFirstAssistant && message.steps && message.steps.length > 0 && (
                     <InlineSteps
                       steps={message.steps}
                       isStreaming={message.id === streamingMessageId}
@@ -570,9 +605,14 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
                     debug={message.debug}
                     isStreaming={message.id === streamingMessageId}
                     onOpenDebug={message.debug ? () => handleMessageDebugClick(message.debug!) : undefined}
+                    onBadgeClick={message.debug ? (section) => {
+                      handleMessageDebugClick(message.debug!);
+                      setHighlightedSection(section);
+                    } : undefined}
                   />
                 </div>
-              ))}
+                );
+              })}
 
               {/* Pending steps (before assistant message arrives) */}
               {pendingSteps.length > 0 && (
@@ -595,7 +635,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
           </main>
 
           <div className="px-4 pb-4 pt-2">
-            <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex gap-2 items-center">
+            <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
               <Input
                 ref={inputRef}
                 value={input}
@@ -606,9 +646,9 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
                 placeholder="Type your response..."
                 disabled={isLoading}
                 autoFocus
-                className="flex-1 bg-secondary border-0 rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 text-[15px] h-11 px-5 shadow-none"
+                className="w-full bg-secondary border-0 rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 text-[15px] h-12 pl-5 pr-12 shadow-none"
               />
-              <Button type="submit" disabled={isLoading || !input.trim()} size="icon" className="shrink-0 bg-foreground text-background hover:bg-foreground/90 disabled:bg-secondary disabled:text-muted-foreground rounded-full h-10 w-10 shadow-none border-0">
+              <Button type="submit" disabled={isLoading || !input.trim()} size="icon" className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-foreground text-background hover:bg-foreground/90 disabled:bg-transparent disabled:text-muted-foreground/30 rounded-full h-9 w-9 shadow-none border-0">
                 <Send className="w-4 h-4" />
               </Button>
             </form>

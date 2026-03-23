@@ -4,7 +4,29 @@ import { useState } from "react";
 import { ChatInterface } from "@/components/chat-interface";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { systemCatalog, type SystemLanding } from "@/systems/registry";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Fingerprint, Sprout, LineChart, type LucideIcon } from "lucide-react";
+
+const systemCards: Record<string, {
+  icon: LucideIcon;
+  iconColor: string;
+  bar: string;
+}> = {
+  Fingerprint: {
+    icon: Fingerprint,
+    iconColor: "text-red-600 dark:text-red-400",
+    bar: "bg-red-500",
+  },
+  Sprout: {
+    icon: Sprout,
+    iconColor: "text-amber-600 dark:text-amber-400",
+    bar: "bg-amber-500",
+  },
+  LineChart: {
+    icon: LineChart,
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    bar: "bg-emerald-600",
+  },
+};
 
 const accentColors: Record<string, { pulse: string; border: string; text: string; heartbeat: string; bg: string }> = {
   red: { pulse: "bg-red-500/10", border: "border-red-400/40 dark:border-red-500/30", text: "text-red-600 dark:text-red-500/80", heartbeat: "text-red-500/25", bg: "bg-red-500" },
@@ -42,24 +64,22 @@ export default function Home() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {systemCatalog.map((sys) => {
-                const colors = accentColors[sys.landing.accentColor] || accentColors.blue;
+                const card = systemCards[sys.icon];
+                if (!card) return null;
+                const IconComponent = card.icon;
                 return (
                   <button
                     key={sys.id}
                     onClick={() => setAppState({ step: "system-landing", systemId: sys.id, landing: sys.landing })}
-                    className="group text-left rounded-2xl border border-border hover:border-transparent bg-card hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/20 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 overflow-hidden"
+                    className="group text-left rounded-2xl border border-border bg-card hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/20 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 overflow-hidden"
                   >
-                    <div className={`h-1 w-full bg-gradient-to-r ${
-                      sys.landing.accentColor === "red" ? "from-red-400 to-red-600" :
-                      sys.landing.accentColor === "blue" ? "from-blue-400 to-blue-600" :
-                      sys.landing.accentColor === "green" ? "from-green-400 to-green-600" :
-                      sys.landing.accentColor === "purple" ? "from-purple-400 to-purple-600" :
-                      "from-amber-400 to-amber-600"
-                    }`} />
-                    <div className="p-5">
-                      <div className="text-3xl mb-3">{sys.icon}</div>
-                      <h3 className="font-semibold text-foreground text-[15px] mb-1">{sys.name}</h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed">{sys.description}</p>
+                    <div className="flex h-full">
+                      <div className={`w-1 shrink-0 ${card.bar} rounded-l-2xl`} />
+                      <div className="p-5 flex-1 min-w-0">
+                        <IconComponent className={`w-5 h-5 ${card.iconColor} mb-3`} />
+                        <h3 className="font-semibold text-foreground text-[15px] mb-1">{sys.name}</h3>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{sys.description}</p>
+                      </div>
                     </div>
                   </button>
                 );
@@ -129,7 +149,7 @@ export default function Home() {
               <h1 className="font-display text-7xl md:text-8xl tracking-wide leading-[0.85]">
                 <span className="block text-foreground/40 text-4xl md:text-5xl mb-1">{landing.title[0]}</span>
                 <span className="block text-foreground">{landing.title[1]}</span>
-                <span className="block text-foreground/40 text-4xl md:text-5xl mt-1">{landing.title[2]}</span>
+                {landing.title[2] && <span className="block text-foreground/40 text-4xl md:text-5xl mt-1">{landing.title[2]}</span>}
               </h1>
             </div>
 
