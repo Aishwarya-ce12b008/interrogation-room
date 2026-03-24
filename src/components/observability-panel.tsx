@@ -219,6 +219,7 @@ export function ObservabilityPanel({
 
                 {/* Other components */}
                 <div className="space-y-2">
+                  <TokenBar label="Tool definitions" value={breakdown.toolDefinitionTokens || 0} total={totalTokens} color="orange" />
                   <TokenBar label={`Conversation history (${debug.messageCount || 0} msgs)`} value={breakdown.conversationTokens} total={totalTokens} color="amber" />
                   <TokenBar label="Completion (output)" value={breakdown.completionTokens} total={totalTokens} color="emerald" />
                 </div>

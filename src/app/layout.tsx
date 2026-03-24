@@ -24,8 +24,8 @@ const publicSans = Public_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "The Interrogation Room",
-  description: "Two detectives. One suspect. No escape.",
+  title: "Agent Playground",
+  description: "Each agent system has its own personality, tools, and purpose.",
 };
 
 export default function RootLayout({

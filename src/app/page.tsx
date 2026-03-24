@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ChatInterface } from "@/components/chat-interface";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { systemCatalog, type SystemLanding } from "@/systems/registry";
-import { ArrowLeft, Fingerprint, Sprout, LineChart, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Fingerprint, Sprout, LineChart, Info, type LucideIcon } from "lucide-react";
+import { InfoSlideshow } from "@/components/info-slideshow";
 
 const systemCards: Record<string, {
   icon: LucideIcon;
@@ -43,6 +44,7 @@ type AppStep =
 
 export default function Home() {
   const [appState, setAppState] = useState<AppStep>({ step: "system-select" });
+  const [showInfo, setShowInfo] = useState(false);
 
   // --- Step 1: System Selector ---
   if (appState.step === "system-select") {
@@ -50,8 +52,18 @@ export default function Home() {
       <div className="h-screen flex flex-col overflow-hidden">
         <header className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h1 className="font-display text-2xl tracking-wide text-foreground">Agent Playground</h1>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowInfo(true)}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <Info className="w-[18px] h-[18px]" />
+            </button>
+            <ThemeToggle />
+          </div>
         </header>
+
+        <InfoSlideshow open={showInfo} onClose={() => setShowInfo(false)} />
 
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto px-6 py-10">

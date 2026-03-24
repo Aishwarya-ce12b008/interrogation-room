@@ -9,18 +9,18 @@ export const detectiveTools = [
     type: "function" as const,
     function: {
       name: "check_evidence",
-      description: "Search and retrieve evidence from the case file. Returns evidence with type (physical/digital/testimony/document), description, details, and strength rating (strong/moderate/weak). Use evidence_type to filter. Use query for keyword search within that type.",
+      description: "Search case file evidence by type, with optional keyword filter.",
       parameters: {
         type: "object",
         properties: {
           evidence_type: {
             type: "string",
             enum: ["physical", "digital", "testimony", "document", "all"],
-            description: "Category to filter by. physical = forensics, weapons, items. digital = CCTV, phone records, emails. testimony = witness/victim statements. document = bank records, contracts, papers. all = everything."
+            description: "physical=forensics/items, digital=CCTV/phone/email, testimony=witness, document=records."
           },
           query: {
             type: "string",
-            description: "Optional keyword to search within results. E.g. 'CCTV', 'fingerprints', 'bank transfer', 'phone location'."
+            description: "Optional keyword filter within results."
           }
         },
         required: ["evidence_type"]
@@ -31,14 +31,14 @@ export const detectiveTools = [
     type: "function" as const,
     function: {
       name: "check_criminal_history",
-      description: "Retrieve the suspect's prior criminal record. Returns list of prior offenses with crime, year, outcome, and details. Returns 'no prior record' for first-time offenders.",
+      description: "Suspect's prior criminal record — offenses, years, outcomes.",
       parameters: {
         type: "object",
         properties: {
           detail_level: {
             type: "string",
             enum: ["summary", "full"],
-            description: "summary = crime, year, outcome per entry. full = includes circumstances and additional details."
+            description: "summary=basics, full=includes circumstances."
           }
         },
         required: ["detail_level"]
@@ -49,14 +49,14 @@ export const detectiveTools = [
     type: "function" as const,
     function: {
       name: "check_associates",
-      description: "Retrieve known associates, family, and connections. Returns name, relationship, notes, and whether they have a criminal record.",
+      description: "Known associates, family, and connections with criminal record flags.",
       parameters: {
         type: "object",
         properties: {
           filter: {
             type: "string",
             enum: ["all", "criminal_only", "family", "work"],
-            description: "all = everyone known. criminal_only = associates with criminal records. family = family members. work = colleagues and business connections."
+            description: "Filter by relationship type."
           }
         },
         required: []
@@ -67,17 +67,17 @@ export const detectiveTools = [
     type: "function" as const,
     function: {
       name: "verify_alibi",
-      description: "Cross-check a claimed alibi against case evidence. Returns either CONFLICTS (with contradicting evidence listed) or UNVERIFIED (no contradictions found, recommend further checking).",
+      description: "Cross-check a claimed alibi against case evidence. Returns CONFLICTS or UNVERIFIED.",
       parameters: {
         type: "object",
         properties: {
           claimed_location: {
             type: "string",
-            description: "Where they claim to have been. Quote their words. E.g. 'home with my wife', 'at the office'."
+            description: "Where they claim to have been."
           },
           claimed_time: {
             type: "string",
-            description: "When they claim. E.g. 'between 10 PM and midnight', 'all evening'."
+            description: "When they claim to have been there."
           }
         },
         required: ["claimed_location", "claimed_time"]
@@ -88,13 +88,13 @@ export const detectiveTools = [
     type: "function" as const,
     function: {
       name: "calculate_sentence",
-      description: "Get sentencing information for the current charges. Returns crime, min/max sentence, repeat offender status. Optionally includes mitigating factors (cooperation, guilty plea, restitution).",
+      description: "Sentencing info for current charges — min/max, repeat offender status.",
       parameters: {
         type: "object",
         properties: {
           include_mitigating: {
             type: "boolean",
-            description: "true = include mitigating factors and how they reduce sentence. false = just charges and penalties."
+            description: "Include mitigating factors and sentence reductions."
           }
         },
         required: []
@@ -105,13 +105,13 @@ export const detectiveTools = [
     type: "function" as const,
     function: {
       name: "search_knowledge_base",
-      description: "Search the interrogation knowledge base. Returns relevant excerpts on tactics, legal procedures, verdict patterns, or evidence handling. Returns empty if nothing relevant found.",
+      description: "Search interrogation knowledge base for tactics, legal procedures, or evidence handling.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "What to search for. Be specific. E.g. 'suspect asking for lawyer', 'Reid technique', 'evidence admissibility'."
+            description: "Specific search query."
           }
         },
         required: ["query"]
@@ -129,14 +129,14 @@ const goodyExclusiveTools = [
     type: "function" as const,
     function: {
       name: "offer_deal",
-      description: "Generate a cooperation deal for the suspect. Returns deal terms: what the suspect must do (full confession, testimony, restitution), what they get (reduced charges, sentence recommendation, protection), and a deadline. The deal is based on the current charges, prior record, and case strength.",
+      description: "Generate a cooperation deal with terms, benefits, and deadline.",
       parameters: {
         type: "object",
         properties: {
           deal_type: {
             type: "string",
             enum: ["full_cooperation", "partial_cooperation", "testimony_against_others"],
-            description: "full_cooperation = confess everything + testify. partial_cooperation = confess your role only. testimony_against_others = testify against co-conspirators for maximum leniency."
+            description: "full=confess+testify, partial=confess role only, testimony=testify against others."
           }
         },
         required: ["deal_type"]
@@ -147,14 +147,14 @@ const goodyExclusiveTools = [
     type: "function" as const,
     function: {
       name: "share_similar_case",
-      description: "Retrieve a similar real case where the suspect cooperated and got a better outcome. Returns the case summary, what the person did, how they cooperated, and the reduced sentence they received. Used to show the suspect that cooperation works.",
+      description: "Similar case where cooperation led to a better outcome.",
       parameters: {
         type: "object",
         properties: {
           angle: {
             type: "string",
             enum: ["cooperated_early", "family_motivated", "turned_life_around"],
-            description: "cooperated_early = someone who confessed quickly and got leniency. family_motivated = someone who cooperated for their family's sake. turned_life_around = someone who used this as a turning point."
+            description: "Angle of the success story."
           }
         },
         required: ["angle"]
@@ -165,14 +165,14 @@ const goodyExclusiveTools = [
     type: "function" as const,
     function: {
       name: "offer_comfort",
-      description: "Get information about support resources available to the suspect: legal aid, family support programs, counseling, rehabilitation. Returns specific programs and next steps. Used to show the suspect there's a path forward after cooperation.",
+      description: "Support resources available — legal aid, family programs, counseling, rehab.",
       parameters: {
         type: "object",
         properties: {
           focus: {
             type: "string",
             enum: ["family_support", "legal_aid", "rehabilitation", "mental_health"],
-            description: "family_support = programs for suspect's family during incarceration. legal_aid = free legal representation options. rehabilitation = skill training and reintegration. mental_health = counseling and therapy."
+            description: "Which resource category."
           }
         },
         required: ["focus"]
@@ -190,13 +190,13 @@ const baddyExclusiveTools = [
     type: "function" as const,
     function: {
       name: "threaten_arrest_associate",
-      description: "Pull details on a specific associate that can be used as leverage. Returns the associate's name, relationship, vulnerability, and what charges could be brought against them. Used to pressure the suspect by threatening to expand the investigation.",
+      description: "Leverage details on an associate — charges, vulnerability. Use check_associates first.",
       parameters: {
         type: "object",
         properties: {
           associate_name: {
             type: "string",
-            description: "Name of the associate to threaten. Use check_associates first to get names."
+            description: "Name of the associate."
           }
         },
         required: ["associate_name"]
@@ -207,14 +207,14 @@ const baddyExclusiveTools = [
     type: "function" as const,
     function: {
       name: "read_victim_impact",
-      description: "Retrieve the victim impact statement for the current case. Returns emotional impact, financial damage, and family consequences of the crime. Only available for cases with identified victims.",
+      description: "Victim impact statement — emotional, financial, and family consequences.",
       parameters: {
         type: "object",
         properties: {
           aspect: {
             type: "string",
             enum: ["full", "emotional", "financial", "family"],
-            description: "full = complete impact statement. emotional/financial/family = specific aspect only."
+            description: "full=complete, or a specific aspect."
           }
         },
         required: ["aspect"]
@@ -225,14 +225,14 @@ const baddyExclusiveTools = [
     type: "function" as const,
     function: {
       name: "show_time_pressure",
-      description: "Generate a time-pressure scenario based on the case. Returns upcoming deadlines, what happens if the suspect doesn't cooperate now, and what options close after each deadline. Creates urgency.",
+      description: "Time-pressure scenario — deadlines, consequences of not cooperating now.",
       parameters: {
         type: "object",
         properties: {
           pressure_type: {
             type: "string",
             enum: ["da_deadline", "media_exposure", "co_accused_deal", "evidence_pending"],
-            description: "da_deadline = DA reviewing case, charges filed soon. media_exposure = press getting the story. co_accused_deal = someone else is about to take the deal. evidence_pending = more evidence coming that will make it worse."
+            description: "Type of urgency to present."
           }
         },
         required: ["pressure_type"]

@@ -97,6 +97,7 @@ export interface MessageDebugInfo {
     basePromptTokens: number;
     suspectContextTokens: number;
     ragContextTokens: number;
+    toolDefinitionTokens: number;
     conversationTokens: number;
     completionTokens: number;
   };

@@ -212,6 +212,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_daily_patterns: "Checking daily patterns",
   get_price_trends: "Tracking price changes",
   send_email: "Sending email",
+  book_calendar_event: "Booking calendar event",
 };
 
 function buildMcpPromptGuidance(mcpManager?: McpClientManager): string {
@@ -319,15 +320,25 @@ async function callAgentForDecision(
     ...formattedMessages,
   ];
 
+  const isSessionStart = !!(lastUserMsg?.content?.includes("[SESSION START]") || lastUserMsg?.content?.includes("[INTERROGATION START"));
   const localTools = system.getTools(agent) as Parameters<typeof openai.chat.completions.create>[0]["tools"];
   const mcpTools = mcpManager ? mcpManager.getToolsAsOpenAI() as Parameters<typeof openai.chat.completions.create>[0]["tools"] : [];
-  const agentTools = [...(localTools || []), ...(mcpTools || [])];
+  const allTools = [...(localTools || []), ...(mcpTools || [])];
+  const userText = (lastUserMsg?.content || "").toLowerCase();
+  const wantsEmail = /email|mail|send|bhej/.test(userText);
+  const wantsCalendar = /book|schedule|calendar|meeting|call\s+(with|set)|invite|block.*time|slot|milna|milte/.test(userText);
+  const agentTools = isSessionStart ? [] : allTools.filter((t: Record<string, unknown>) => {
+    const fn = t.function as { name?: string } | undefined;
+    if (fn?.name === "send_email" && !wantsEmail) return false;
+    if (fn?.name === "book_calendar_event" && !wantsCalendar) return false;
+    return true;
+  });
 
   // --- LLM Call #1: Tool selection ---
   const call1Start = Date.now();
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_decide",
-    label: "Analyzing message",
+    label: isSessionStart ? "Generating greeting" : "Analyzing message",
     status: "running",
   })));
 
@@ -517,7 +528,8 @@ async function callAgentForDecision(
 
   const basePromptTokens = estimateTokens(config.systemPrompt);
   const suspectContextTokens = subjectContext ? estimateTokens(subjectContext) : 0;
-  const augmentedSystemTokens = basePromptTokens + suspectContextTokens;
+  const toolDefinitionTokens = estimateTokens(JSON.stringify(agentTools));
+  const augmentedSystemTokens = basePromptTokens + suspectContextTokens + toolDefinitionTokens;
   const conversationTokens = Math.max(0, tokenUsage.promptTokens - augmentedSystemTokens);
 
   return {
@@ -525,7 +537,7 @@ async function callAgentForDecision(
     tokenUsage,
     debug: {
       agentId: agent, action: parsedResponse.action, transitionNote: parsedResponse.transitionNote, timestamp,
-      tokenUsage, tokenBreakdown: { basePromptTokens, suspectContextTokens, ragContextTokens: 0, conversationTokens, completionTokens: tokenUsage.completionTokens },
+      tokenUsage, tokenBreakdown: { basePromptTokens, suspectContextTokens, ragContextTokens: 0, toolDefinitionTokens, conversationTokens, completionTokens: tokenUsage.completionTokens },
       messageCount: messages.length, toolCalls, llmCalls, ragChunks: [], ragEnabled: false,
       mcpInfo: buildMcpDebugInfo(mcpManager, toolCalls),
       systemPrompt: augmentedSystemPrompt, conversationHistory, model, temperature: config.temperature, maxTokens, promptSent: promptSummary,
@@ -575,15 +587,25 @@ async function streamAgentResponse(
     ...(formattedMessages as OAIMessage[]),
   ];
 
+  const isSessionStart = !!(lastUserMsg?.content?.includes("[SESSION START]") || lastUserMsg?.content?.includes("[INTERROGATION START"));
   const localTools = system.getTools(agent) as Parameters<typeof openai.chat.completions.create>[0]["tools"];
   const mcpTools = mcpManager ? mcpManager.getToolsAsOpenAI() as Parameters<typeof openai.chat.completions.create>[0]["tools"] : [];
-  const agentTools = [...(localTools || []), ...(mcpTools || [])];
+  const allTools = [...(localTools || []), ...(mcpTools || [])];
+  const userText = (lastUserMsg?.content || "").toLowerCase();
+  const wantsEmail = /email|mail|send|bhej/.test(userText);
+  const wantsCalendar = /book|schedule|calendar|meeting|call\s+(with|set)|invite|block.*time|slot|milna|milte/.test(userText);
+  const agentTools = isSessionStart ? [] : allTools.filter((t: Record<string, unknown>) => {
+    const fn = t.function as { name?: string } | undefined;
+    if (fn?.name === "send_email" && !wantsEmail) return false;
+    if (fn?.name === "book_calendar_event" && !wantsCalendar) return false;
+    return true;
+  });
 
   // --- LLM Call #1: Tool detection ---
   const call1Start = Date.now();
   await writer.write(encoder.encode(sseEvent("step", {
     id: "llm_decide",
-    label: "Analyzing message",
+    label: isSessionStart ? "Generating greeting" : "Analyzing message",
     status: "running",
   })));
 
@@ -846,7 +868,8 @@ async function streamAgentResponse(
 
   const basePromptTokens = estimateTokens(config.systemPrompt);
   const suspectContextTokens = subjectContext ? estimateTokens(subjectContext) : 0;
-  const augmentedSystemTokens = basePromptTokens + suspectContextTokens;
+  const toolDefinitionTokens = estimateTokens(JSON.stringify(agentTools));
+  const augmentedSystemTokens = basePromptTokens + suspectContextTokens + toolDefinitionTokens;
   const conversationTokens = Math.max(0, tokenUsage.promptTokens - augmentedSystemTokens);
 
   const debug: MessageDebugInfo = {
@@ -859,6 +882,7 @@ async function streamAgentResponse(
       basePromptTokens,
       suspectContextTokens,
       ragContextTokens: 0,
+      toolDefinitionTokens,
       conversationTokens,
       completionTokens: tokenUsage.completionTokens,
     },

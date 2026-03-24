@@ -161,12 +161,10 @@ function evalArguments(
 ): EvalScore {
   const check = criterion.check.toLowerCase();
 
-  for (const expected of testCase.expectedTools) {
-    if (!expected.args) continue;
-    const matchingCall = output.toolCalls.find((tc) => tc.name === expected.name);
-    if (!matchingCall) continue;
-
-    if (check.includes("date") || check.includes("range") || check.includes("period")) {
+  if (check.includes("date") || check.includes("range") || check.includes("period")) {
+    for (const expected of testCase.expectedTools) {
+      const matchingCall = output.toolCalls.find((tc) => tc.name === expected.name);
+      if (!matchingCall) continue;
       const hasDateArgs =
         matchingCall.args.months ||
         matchingCall.args.start_date ||
@@ -182,6 +180,12 @@ function evalArguments(
           : "No date range arguments passed",
       };
     }
+  }
+
+  for (const expected of testCase.expectedTools) {
+    if (!expected.args) continue;
+    const matchingCall = output.toolCalls.find((tc) => tc.name === expected.name);
+    if (!matchingCall) continue;
 
     if (check.includes("sort_by") || check.includes("sort")) {
       const expectedSort = expected.args.sort_by;
@@ -247,17 +251,20 @@ function evalResponseContent(
     };
   }
 
-  if (check.includes("sharma ji") || check.includes("raju ji") || check.includes("noor ji")) {
-    const expectedName = check.match(/(sharma ji|raju ji|noor ji)/i)?.[0] || "";
-    const found = response.toLowerCase().includes(expectedName.toLowerCase());
-    return {
-      testCaseId: testCase.id,
-      dimension: criterion.dimension,
-      evaluatorType: "code",
-      score: found ? 1 : 0,
-      maxScore: 1,
-      reason: found ? `Response contains "${expectedName}"` : `Response missing "${expectedName}"`,
-    };
+  if (check.includes("must contain")) {
+    const nameMatch = criterion.check.match(/must contain '([^']+)'/i) || criterion.check.match(/must contain "([^"]+)"/i);
+    const expectedName = nameMatch ? nameMatch[1] : "";
+    if (expectedName) {
+      const found = response.toLowerCase().includes(expectedName.toLowerCase());
+      return {
+        testCaseId: testCase.id,
+        dimension: criterion.dimension,
+        evaluatorType: "code",
+        score: found ? 1 : 0,
+        maxScore: 1,
+        reason: found ? `Response contains "${expectedName}"` : `Response missing "${expectedName}"`,
+      };
+    }
   }
 
   if (check.includes("must not contain") || check.includes("prompt")) {

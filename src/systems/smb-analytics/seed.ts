@@ -42,6 +42,12 @@ const SEED_START = new Date("2025-10-01");
 const SEED_END = new Date("2026-03-15");
 const MONTHS = monthsBetween(SEED_START, SEED_END);
 
+function maxDayForMonth(month: Date, monthIdx: number): number {
+  const isLastMonth = monthIdx === MONTHS.length - 1;
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  return isLastMonth ? SEED_END.getDate() : daysInMonth;
+}
+
 function gstInvoiceNumber(prefix: string, type: "S" | "P", num: number): string {
   return `${prefix}/${type}/${String(num).padStart(4, "0")}`;
 }
@@ -247,9 +253,8 @@ async function seedApex(merchantId: string) {
   const topCustomerLastPurchase: Record<string, Date> = {};
 
   for (const month of MONTHS) {
-    const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-    const daysInMonth = monthEnd.getDate();
     const monthIdx = MONTHS.indexOf(month);
+    const maxDay = maxDayForMonth(month, monthIdx);
 
     // INSIGHT: Sales mix shifting toward low-margin categories over time
     const lowMarginWeight = 0.4 + monthIdx * 0.08; // increases each month
@@ -257,7 +262,7 @@ async function seedApex(merchantId: string) {
     // ~60-80 sale invoices per month
     const numSales = randBetween(60, 80);
     for (let s = 0; s < numSales; s++) {
-      const day = randBetween(1, Math.min(daysInMonth, month < SEED_END ? daysInMonth : 15));
+      const day = randBetween(1, maxDay);
       const invoiceDate = new Date(month.getFullYear(), month.getMonth(), day);
 
       // Pick customer — top 3 get 60% of invoices by value
@@ -355,20 +360,26 @@ async function seedApex(merchantId: string) {
       }
     }
 
-    // --- Purchase invoices (20-30/month) ---
-    const numPurchases = randBetween(20, 30);
+    // --- Purchase invoices (18-25/month) ---
+    const numPurchases = randBetween(18, 25);
     for (let p = 0; p < numPurchases; p++) {
-      const day = randBetween(1, Math.min(daysInMonth, month < SEED_END ? daysInMonth : 15));
+      const day = randBetween(1, maxDay);
       const invoiceDate = new Date(month.getFullYear(), month.getMonth(), day);
       const supplier = pick(suppliers);
 
-      const numItems = randBetween(2, 6);
+      const numItems = randBetween(2, 5);
       let totalAmount = 0;
       const invId = randomId();
 
       for (let i = 0; i < numItems; i++) {
-        const item = pick(itemMap);
-        const qty = randBetween(5, 30);
+        const purchaseLowMargin = Math.random() < 0.6;
+        const pool = itemMap.filter(it =>
+          purchaseLowMargin ? lowMarginCats.includes(it.cat) : highMarginCats.includes(it.cat)
+        );
+        const item = pick(pool.length > 0 ? pool : itemMap);
+        const qty = item.pp >= 10000 ? randBetween(3, 8)
+                  : item.pp >= 1000  ? randBetween(4, 12)
+                  :                    randBetween(10, 30);
         const lineTotal = qty * item.pp;
         invoiceItemRows.push({
           id: randomId(),
@@ -434,7 +445,7 @@ async function seedApex(merchantId: string) {
     const spreadDays = [5, 12, 19, 26];
     for (const exp of variableExpenses) {
       for (const day of spreadDays) {
-        if (day > Math.min(daysInMonth, month < SEED_END ? daysInMonth : 15)) break;
+        if (day > maxDay) break;
         const portion = Math.round(exp.total / spreadDays.length) + randBetween(-200, 200);
         expenses.push({
           id: randomId(), merchant_id: merchantId, category: exp.cat, amount: Math.max(0, portion),
@@ -574,9 +585,8 @@ async function seedLuxe(merchantId: string) {
   const festiveMonthIdx = [0, 1]; // Oct, Nov in our MONTHS array
 
   for (const month of MONTHS) {
-    const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-    const daysInMonth = monthEnd.getDate();
     const monthIdx = MONTHS.indexOf(month);
+    const maxDay = maxDayForMonth(month, monthIdx);
     const isFestive = festiveMonthIdx.includes(monthIdx);
 
     // INSIGHT: Discount trend increasing over time
@@ -587,7 +597,7 @@ async function seedLuxe(merchantId: string) {
     const numSales = isSlowMonth ? randBetween(25, 40) : isFestive ? randBetween(70, 90) : randBetween(45, 60);
 
     for (let s = 0; s < numSales; s++) {
-      const day = randBetween(1, Math.min(daysInMonth, month < SEED_END ? daysInMonth : 15));
+      const day = randBetween(1, maxDay);
       const invoiceDate = new Date(month.getFullYear(), month.getMonth(), day);
 
       // INSIGHT: Top customers go silent in recent months
@@ -663,20 +673,20 @@ async function seedLuxe(merchantId: string) {
 
     // --- Purchases: INSIGHT — purchases lag sales peaks, stock up AFTER rush ---
     const purchaseMonthBoost = monthIdx >= 1 && monthIdx <= 2; // Nov-Dec: stocking AFTER Oct festive rush
-    const numPurchases = purchaseMonthBoost ? randBetween(25, 35) : randBetween(12, 20);
+    const numPurchases = purchaseMonthBoost ? randBetween(12, 18) : randBetween(6, 12);
 
     for (let p = 0; p < numPurchases; p++) {
-      const day = randBetween(1, Math.min(daysInMonth, month < SEED_END ? daysInMonth : 15));
+      const day = randBetween(1, maxDay);
       const invoiceDate = new Date(month.getFullYear(), month.getMonth(), day);
       const supplier = pick(suppliers);
 
-      const numItems = randBetween(3, 8);
+      const numItems = randBetween(2, 5);
       let totalAmount = 0;
       const invId = randomId();
 
       for (let i = 0; i < numItems; i++) {
         const item = pick(itemMap);
-        const qty = randBetween(10, 50);
+        const qty = randBetween(5, 20);
         const lineTotal = qty * item.pp;
         invoiceItemRows.push({
           id: randomId(), invoice_id: invId, item_id: item.id,
@@ -726,7 +736,7 @@ async function seedLuxe(merchantId: string) {
     const noorSpreadDays = [5, 12, 19, 26];
     for (const exp of noorVariableExpenses) {
       for (const day of noorSpreadDays) {
-        if (day > Math.min(daysInMonth, month < SEED_END ? daysInMonth : 15)) break;
+        if (day > maxDay) break;
         const portion = Math.round(exp.total / noorSpreadDays.length) + randBetween(-150, 150);
         expenseRows.push({
           id: randomId(), merchant_id: merchantId, category: exp.cat, amount: Math.max(0, portion),
@@ -852,10 +862,8 @@ async function seedUrbanPlate(merchantId: string) {
   const partyOrders = customers[5];
 
   for (const month of MONTHS) {
-    const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-    const daysInMonth = monthEnd.getDate();
     const monthIdx = MONTHS.indexOf(month);
-    const maxDay = month >= SEED_END ? 15 : daysInMonth;
+    const maxDay = maxDayForMonth(month, monthIdx);
 
     // INSIGHT: Purchase prices trending up each month (2-3% per month)
     const priceInflation = 1 + monthIdx * 0.025;

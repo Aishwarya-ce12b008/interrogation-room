@@ -21,25 +21,24 @@ import type { Merchant } from "./types";
 // ─── Shared date-range params for tool definitions ──────────────────────────
 
 const dateRangeParams = {
-  months: { type: "number", description: "Number of months to look back. Either months OR start_date must be provided." },
-  start_date: { type: "string", description: "Start date (YYYY-MM-DD). Either start_date OR months must be provided." },
-  end_date: { type: "string", description: "End date (YYYY-MM-DD). Defaults to today if not provided." },
+  months: { type: "number", description: "Months to look back (alternative to start_date)." },
+  start_date: { type: "string", description: "YYYY-MM-DD (alternative to months)." },
+  end_date: { type: "string", description: "YYYY-MM-DD. Defaults to today." },
 } as const;
 
 // ─── Tool definitions (OpenAI function-calling format) ──────────────────────
+
+const granularityParam = { type: "string", enum: ["daily", "weekly", "monthly"], description: "Time grouping. Auto-detected if omitted." } as const;
 
 export const analyticsTools = [
   {
     type: "function" as const,
     function: {
       name: "get_revenue_summary",
-      description: "Get revenue summary including total sales, discount amounts, and invoice counts. Pass months or start_date/end_date for the desired range.",
+      description: "Revenue totals, discounts, and invoice counts for a period.",
       parameters: {
         type: "object",
-        properties: {
-          ...dateRangeParams,
-          granularity: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Time grouping. Auto-detected from date range if not specified." },
-        },
+        properties: { ...dateRangeParams, granularity: granularityParam },
       },
     },
   },
@@ -47,12 +46,12 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_top_items",
-      description: "Get top selling items ranked by revenue or quantity. Shows item name, category, revenue, quantity, and margin. Pass months or start_date/end_date for the desired range.",
+      description: "Top selling items with revenue, quantity, and margin.",
       parameters: {
         type: "object",
         properties: {
-          limit: { type: "number", description: "Number of items to return. Default 10." },
-          sort_by: { type: "string", enum: ["revenue", "quantity"], description: "Sort by revenue or quantity. Default revenue." },
+          limit: { type: "number", description: "Items to return. Default 10." },
+          sort_by: { type: "string", enum: ["revenue", "quantity"], description: "Default revenue." },
           ...dateRangeParams,
         },
       },
@@ -62,7 +61,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_receivables_ageing",
-      description: "Get outstanding receivables (unpaid sale invoices) bucketed by days overdue: 0-30, 30-60, 60-90, 90+ days. Also shows top debtors.",
+      description: "Unpaid sale invoices bucketed by days overdue, with top debtors.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -70,7 +69,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_payables_ageing",
-      description: "Get outstanding payables (unpaid purchase invoices) bucketed by days overdue.",
+      description: "Unpaid purchase invoices bucketed by days overdue.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -78,13 +77,10 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_expense_breakdown",
-      description: "Get expenses broken down by category. Shows total per category and trend over time. Pass months or start_date/end_date for the desired range.",
+      description: "Expenses by category with trends over time.",
       parameters: {
         type: "object",
-        properties: {
-          ...dateRangeParams,
-          granularity: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Time grouping. Auto-detected from date range if not specified." },
-        },
+        properties: { ...dateRangeParams, granularity: granularityParam },
       },
     },
   },
@@ -92,7 +88,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_inventory_levels",
-      description: "Get current inventory levels for all items. Shows quantity on hand, monthly sales velocity, days of stock remaining, and stock value in rupees.",
+      description: "Current stock levels, sales velocity, days remaining, and value.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -100,13 +96,10 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_discount_trend",
-      description: "Get trend of discounts as a percentage of revenue over time. Shows whether discounting is increasing or decreasing. Pass months or start_date/end_date for the desired range.",
+      description: "Discount as % of revenue over time — trending up or down.",
       parameters: {
         type: "object",
-        properties: {
-          ...dateRangeParams,
-          granularity: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Time grouping. Auto-detected from date range if not specified." },
-        },
+        properties: { ...dateRangeParams, granularity: granularityParam },
       },
     },
   },
@@ -114,7 +107,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_payment_timing",
-      description: "Get payment timing analysis: DSO (days sales outstanding = how fast customers pay), DPO (days payable outstanding = how fast we pay suppliers), and per-supplier payment details vs credit terms.",
+      description: "DSO, DPO, and per-supplier payment timing vs credit terms.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -122,13 +115,13 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_customer_activity",
-      description: "Get customer purchase activity. Can look up a specific customer by name, or list customers filtered by status. Returns revenue, invoice count, last purchase date, outstanding amount, and activity status.",
+      description: "Customer purchase activity — lookup by name or filter by status.",
       parameters: {
         type: "object",
         properties: {
-          customer_name: { type: "string", description: "Name (or partial name) of a specific customer to look up. Use this when discussing a particular customer." },
-          status: { type: "string", enum: ["active", "slowing", "inactive"], description: "Filter by activity status. active = purchased in last 30 days, slowing = 30-60 days ago, inactive = 60+ days." },
-          limit: { type: "number", description: "Max customers to return when browsing. Default 5. Ignored when customer_name is provided." },
+          customer_name: { type: "string", description: "Name or partial name of a customer." },
+          status: { type: "string", enum: ["active", "slowing", "inactive"], description: "active=30d, slowing=30-60d, inactive=60d+." },
+          limit: { type: "number", description: "Max results. Default 5." },
         },
       },
     },
@@ -137,12 +130,12 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_party_ledger",
-      description: "Get detailed transaction history for a specific customer or supplier. Returns their invoices with line items (what they bought/sold, quantities, amounts), payment status, and outstanding balance. Use this when the user asks about a specific party's purchases, orders, or history.",
+      description: "Transaction history for a customer/supplier with line items and payment status.",
       parameters: {
         type: "object",
         properties: {
-          party_name: { type: "string", description: "Name (or partial name) of the customer or supplier." },
-          type: { type: "string", enum: ["sale", "purchase"], description: "Invoice type: 'sale' for customer transactions, 'purchase' for supplier transactions. Default: sale." },
+          party_name: { type: "string", description: "Customer or supplier name." },
+          type: { type: "string", enum: ["sale", "purchase"], description: "Default: sale." },
           ...dateRangeParams,
         },
         required: ["party_name"],
@@ -153,7 +146,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_margin_analysis",
-      description: "Get gross margin analysis by category and by individual item. Shows revenue, cost, and margin percentage. Pass months or start_date/end_date for the desired range.",
+      description: "Gross margins by category and item — revenue, cost, margin %.",
       parameters: {
         type: "object",
         properties: { ...dateRangeParams },
@@ -164,7 +157,7 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_daily_patterns",
-      description: "Get revenue and order patterns by day of week. Shows average daily revenue and order count for each day (Monday through Sunday). Pass months or start_date/end_date for the desired range.",
+      description: "Revenue and order count patterns by day of week.",
       parameters: {
         type: "object",
         properties: { ...dateRangeParams },
@@ -175,13 +168,10 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "get_price_trends",
-      description: "Get purchase price trends for key items. Shows how ingredient/procurement costs are changing and compares with current selling prices. Pass months or start_date/end_date for the desired range.",
+      description: "Purchase/procurement price trends vs current selling prices.",
       parameters: {
         type: "object",
-        properties: {
-          ...dateRangeParams,
-          granularity: { type: "string", enum: ["daily", "weekly", "monthly"], description: "Time grouping. Auto-detected from date range if not specified." },
-        },
+        properties: { ...dateRangeParams, granularity: granularityParam },
       },
     },
   },
@@ -189,14 +179,37 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "send_email",
-      description: "Send an email to the business owner with insights, analysis, or action items. Their email is already on file. Use markdown tables for comparisons and bullet points for insights.",
+      description: "Email insights to the business owner. Use markdown formatting.",
       parameters: {
         type: "object",
         properties: {
-          subject: { type: "string", description: "Email subject line. Keep it short and specific, e.g. 'This week's margin alert' or 'Top 5 items — revenue breakdown'." },
-          body: { type: "string", description: "Email body in markdown. Use '- ' bullets for insights, markdown tables (| col | col |) for comparisons/rankings, and **bold** for key numbers. Mix both for best readability." },
+          subject: { type: "string", description: "Short, specific subject line." },
+          body: { type: "string", description: "Markdown body — bullets for insights, tables for comparisons." },
         },
         required: ["subject", "body"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "book_calendar_event",
+      description: "Create a Google Calendar event and send invites. Use when the user asks to schedule/book a meeting, call, or discussion.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Event title." },
+          start_datetime: { type: "string", description: "ISO 8601 start time, e.g. 2025-03-25T15:00:00+05:30. Use Today's date from context to resolve relative dates like 'tomorrow'." },
+          duration_minutes: { type: "number", description: "Duration in minutes. Default 30." },
+          attendees: {
+            type: "array",
+            items: { type: "string" },
+            description: "Email addresses of attendees. Ask the user if not provided.",
+          },
+          description: { type: "string", description: "Event description — include relevant context from the conversation." },
+          location: { type: "string", description: "Optional meeting location or video call link." },
+        },
+        required: ["title", "start_datetime", "attendees"],
       },
     },
   },
@@ -308,6 +321,42 @@ export async function executeTool(
       });
       if (result.success) return "Email sent successfully.";
       return `Error sending email: ${result.error}`;
+    }
+    case "book_calendar_event": {
+      const title = args.title as string;
+      const startDatetime = args.start_datetime as string;
+      const durationMinutes = (args.duration_minutes as number) || 30;
+      const attendees = args.attendees as string[];
+      const description = (args.description as string) || "";
+      const location = (args.location as string) || "";
+
+      if (!title || !startDatetime || !attendees?.length) {
+        return "Error: title, start_datetime, and at least one attendee email are required.";
+      }
+
+      const start = new Date(startDatetime);
+      if (isNaN(start.getTime())) {
+        return "Error: Invalid start_datetime format. Use ISO 8601, e.g. 2025-03-25T15:00:00+05:30.";
+      }
+
+      const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+      const fmtCal = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+      const calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+        `&text=${encodeURIComponent(title)}` +
+        `&dates=${fmtCal(start)}/${fmtCal(end)}` +
+        `&details=${encodeURIComponent(description)}` +
+        (location ? `&location=${encodeURIComponent(location)}` : "") +
+        `&add=${attendees.map(e => encodeURIComponent(e)).join(",")}`;
+
+      const dayStr = start.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", year: "numeric" });
+      const timeStr = start.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+      return fmt({
+        success: true,
+        event: { title, date: dayStr, time: timeStr, duration_minutes: durationMinutes, attendees, description, location },
+        calendar_url: calUrl,
+        message: `Calendar event "${title}" ready for ${dayStr} at ${timeStr} (${durationMinutes} min). Attendees: ${attendees.join(", ")}.`,
+      });
     }
     default:
       return `Unknown tool: ${name}`;

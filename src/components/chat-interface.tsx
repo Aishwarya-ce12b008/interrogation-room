@@ -194,7 +194,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [subject, setSubject] = useState<SuspectCardData | MerchantCardData | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
-  const [showPanel, setShowPanel] = useState(true);
+  const [showPanel, setShowPanel] = useState(false);
   const [showCasePopover, setShowCasePopover] = useState(false);
   const [showAllSubjects, setShowAllSubjects] = useState(false);
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
