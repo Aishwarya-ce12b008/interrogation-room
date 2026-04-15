@@ -148,20 +148,34 @@ export async function sendInsightEmail(opts: {
   merchantName: string;
   subject: string;
   body: string;
-}): Promise<{ success: boolean; error?: string }> {
+  fallbackTo?: string;
+}): Promise<{ success: boolean; sentTo?: string; error?: string }> {
   try {
     const bodyHtml = markdownToHtml(opts.body);
     const html = buildEmailHtml(opts.merchantName, opts.subject, bodyHtml);
+    const resend = getResend();
 
-    const { error } = await getResend().emails.send({
+    const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: opts.to,
       subject: opts.subject,
       html,
     });
 
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+    if (!error) return { success: true, sentTo: opts.to };
+
+    if (opts.fallbackTo && opts.fallbackTo !== opts.to) {
+      const { error: retryError } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: opts.fallbackTo,
+        subject: opts.subject,
+        html,
+      });
+      if (!retryError) return { success: true, sentTo: opts.fallbackTo };
+      return { success: false, error: retryError.message };
+    }
+
+    return { success: false, error: error.message };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }

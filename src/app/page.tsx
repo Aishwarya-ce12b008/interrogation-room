@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChatInterface } from "@/components/chat-interface";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { systemCatalog, type SystemLanding } from "@/systems/registry";
-import { ArrowLeft, Fingerprint, Sprout, LineChart, Info, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Fingerprint, Sprout, LineChart, Shield, Info, type LucideIcon } from "lucide-react";
 import { InfoSlideshow } from "@/components/info-slideshow";
 
 const systemCards: Record<string, {
@@ -26,6 +26,11 @@ const systemCards: Record<string, {
     icon: LineChart,
     iconColor: "text-emerald-600 dark:text-emerald-400",
     bar: "bg-emerald-600",
+  },
+  Shield: {
+    icon: Shield,
+    iconColor: "text-purple-600 dark:text-purple-400",
+    bar: "bg-purple-500",
   },
 };
 

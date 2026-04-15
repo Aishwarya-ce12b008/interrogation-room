@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import Image from "next/image";
 const TOTAL_SLIDES = 7;
+
+const cubic = [0.25, 0.1, 0.25, 1] as [number, number, number, number];
 
 const slideVariants = {
   enter: {
@@ -13,12 +16,12 @@ const slideVariants = {
   center: {
     y: 0,
     opacity: 1,
-    transition: { duration: 0.8, ease: [0.25, 0.1, 0.25, 1] },
+    transition: { duration: 0.8, ease: cubic },
   },
   exit: {
     y: 8,
     opacity: 0,
-    transition: { duration: 0.5, ease: [0.25, 0.1, 0.25, 1] },
+    transition: { duration: 0.5, ease: cubic },
   },
 };
 
@@ -27,7 +30,7 @@ const fadeUp = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: 0.15 + i * 0.18, duration: 0.7, ease: [0.25, 0.1, 0.25, 1] },
+    transition: { delay: 0.15 + i * 0.18, duration: 0.7, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number] },
   }),
 };
 
@@ -265,11 +268,35 @@ const agentMockups = [
 
 /* ──────────────────────── Slide Components ──────────────────────── */
 
+function SlideHero() {
+  return (
+    <div className="flex flex-col justify-center h-full px-10 md:px-20">
+      <motion.p custom={0} variants={fadeUp} initial="hidden" animate="visible"
+        className="text-muted-foreground text-sm tracking-widest uppercase mb-4"
+      >
+        Portfolio
+      </motion.p>
+
+      <motion.h1 custom={1} variants={fadeUp} initial="hidden" animate="visible"
+        className="font-display text-3xl tracking-wide text-foreground leading-tight mb-6"
+      >
+        Agent Fleet
+      </motion.h1>
+
+      <motion.p custom={2} variants={fadeUp} initial="hidden" animate="visible"
+        className="text-muted-foreground text-lg leading-relaxed max-w-xl"
+      >
+        A collection of agents built from scratch — each solving a different problem, each pushing a different boundary.
+      </motion.p>
+    </div>
+  );
+}
+
 function SlidePlatform() {
   return (
     <div className="flex flex-col justify-center h-full px-10 md:px-20">
       <motion.h1 custom={0} variants={fadeUp} initial="hidden" animate="visible"
-        className="font-display text-3xl tracking-wide text-foreground leading-tight mb-8"
+        className="font-display text-3xl tracking-wide text-foreground leading-tight mb-4"
       >
         The Agent Playground
       </motion.h1>
@@ -278,6 +305,18 @@ function SlidePlatform() {
         className="text-muted-foreground text-lg leading-relaxed max-w-2xl"
       >
         A platform built to rapidly prototype AI agents, with deep observability plugged in so you can see exactly what&apos;s happening behind every response.
+      </motion.p>
+
+      <motion.h2 custom={2} variants={fadeUp} initial="hidden" animate="visible"
+        className="font-display text-3xl tracking-wide text-foreground leading-tight mt-10 mb-4"
+      >
+        The Agent Itself
+      </motion.h2>
+
+      <motion.p custom={3} variants={fadeUp} initial="hidden" animate="visible"
+        className="text-muted-foreground text-lg leading-relaxed max-w-2xl"
+      >
+        But the platform is just the shell. The real story is the agent itself — how it reasons, what tools it reaches for, how it recovers when things go wrong. That&apos;s what we&apos;ll walk through.
       </motion.p>
     </div>
   );
@@ -291,7 +330,7 @@ function SlideWhyImages() {
       <motion.h1 custom={0} variants={fadeUp} initial="hidden" animate="visible"
         className="font-display text-3xl tracking-wide text-foreground leading-tight mb-3"
       >
-        6 agents, 6 workflows
+        My explorations: 6 agents, 6 workflows
       </motion.h1>
 
       <motion.p custom={1} variants={fadeUp} initial="hidden" animate="visible"
@@ -373,19 +412,23 @@ function SlideWhyText() {
 const layers = [
   {
     label: "The Model",
-    description: "The foundation. A probabilistic system that takes tokens in and gives tokens out. On its own, it knows nothing about your problem.",
+    description: "The raw intelligence. Powerful, but generic \u2014 knows nothing about your business.",
   },
   {
     label: "System Prompt",
-    description: "The instruction layer. This is where you define who the agent is, how it reasons, what it can and cannot do.",
+    description: "The identity layer. Personality, brand voice, scope, policies, and how the agent should behave.",
+  },
+  {
+    label: "RAG",
+    description: "Your business docs, policies, and PDFs \u2014 expanding context so the agent can respond about specific topics.",
   },
   {
     label: "Tools",
-    description: "The execution layer. Functions the agent can invoke to interact with the real world. Search, compute, fetch, act.",
+    description: "Enterprise data and private APIs wired in. The agent goes from conversational to operational.",
   },
   {
-    label: "MCPs & Knowledge",
-    description: "The context layer. RAG pipelines, MCP servers, domain-specific knowledge. This is what makes the agent useful for your enterprise, not just generic.",
+    label: "MCPs",
+    description: "A framework to plug in any tool quickly \u2014 scaling from 5 integrations to 10,000.",
   },
 ];
 
@@ -395,7 +438,7 @@ function SlideHarness() {
       <motion.h1 custom={0} variants={fadeUp} initial="hidden" animate="visible"
         className="font-display text-3xl tracking-wide text-foreground leading-tight mb-3"
       >
-        Building blocks of an agent
+        Climbing the agent stack
       </motion.h1>
 
       <motion.p custom={1} variants={fadeUp} initial="hidden" animate="visible"
@@ -406,24 +449,16 @@ function SlideHarness() {
 
       <div className="flex flex-col md:flex-row gap-10 items-start">
         <motion.div custom={2} variants={fadeUp} initial="hidden" animate="visible"
-          className="flex flex-col-reverse gap-1.5 shrink-0"
+          className="shrink-0"
         >
-          {layers.map((layer, idx) => (
-            <motion.div
-              key={layer.label}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.4 + idx * 0.2, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-center"
-            >
-              <div
-                className="rounded-md border border-border bg-secondary/40 px-4 py-2.5 text-sm font-medium text-foreground"
-                style={{ width: `${120 + idx * 30}px` }}
-              >
-                {layer.label}
-              </div>
-            </motion.div>
-          ))}
+          <Image
+            src="/ladder.png"
+            alt="Climbing the agent stack"
+            width={220}
+            height={320}
+            className="object-contain opacity-90"
+            priority
+          />
         </motion.div>
 
         <div className="space-y-4 flex-1 max-w-lg">
@@ -442,11 +477,6 @@ function SlideHarness() {
         </div>
       </div>
 
-      <motion.p custom={8} variants={fadeUp} initial="hidden" animate="visible"
-        className="text-foreground text-base leading-relaxed mt-8 max-w-2xl"
-      >
-        The model is the starting line. The system you build around it is the race.
-      </motion.p>
     </div>
   );
 }
@@ -546,9 +576,9 @@ function SlideEvals() {
       </motion.h1>
 
       <motion.p custom={1} variants={fadeUp} initial="hidden" animate="visible"
-        className="text-muted-foreground text-lg leading-relaxed mb-6 max-w-2xl"
+        className="text-muted-foreground text-lg leading-relaxed mt-4 mb-6 max-w-2xl"
       >
-        This is not a traditional testing problem. The system is stochastic. Same input can produce different outputs. You need a fundamentally different approach to evaluation.
+        Your agent is live, handling 10,000 conversations a day. Some responses are wrong. Some questions expose gaps in its knowledge. You can&apos;t read every transcript. You need a system that tells you where the agent is failing, why, and what to fix next.
       </motion.p>
 
       <div className="space-y-4 max-w-2xl">
@@ -568,21 +598,6 @@ function SlideEvals() {
       </div>
 
       <motion.div custom={4} variants={fadeUp} initial="hidden" animate="visible"
-        className="flex gap-4 mt-5"
-      >
-        {[
-          { title: "Quality", desc: "Accurate, relevant, complete?" },
-          { title: "Safety", desc: "Stays within guardrails?" },
-          { title: "Capability", desc: "Can it perform end to end?" },
-        ].map((item) => (
-          <div key={item.title} className="border border-border rounded-lg px-4 py-3 flex-1 max-w-[180px]">
-            <span className="text-sm font-medium text-foreground block">{item.title}</span>
-            <span className="text-xs text-muted-foreground mt-0.5 block">{item.desc}</span>
-          </div>
-        ))}
-      </motion.div>
-
-      <motion.div custom={5} variants={fadeUp} initial="hidden" animate="visible"
         className="grid grid-cols-2 gap-3 mt-6 max-w-md"
       >
         <div className="aspect-video rounded-lg border border-border bg-secondary/30 flex items-center justify-center">
@@ -602,14 +617,14 @@ function SlideTakeaway() {
       <motion.h1 custom={0} variants={fadeUp} initial="hidden" animate="visible"
         className="font-display text-3xl tracking-wide text-foreground leading-tight mb-8"
       >
-        It&apos;s not about the model.
+        It&apos;s not the model. It&apos;s the harness.
       </motion.h1>
 
       <div className="space-y-5 max-w-2xl">
         <motion.p custom={1} variants={fadeUp} initial="hidden" animate="visible"
           className="text-muted-foreground text-lg leading-relaxed"
         >
-          Everyone has access to GPT-4, Claude, Gemini. Same starting line.
+          Everyone has access to GPT-5.4, Opus 4.6, Gemini 3.1. Same starting line.
         </motion.p>
 
         <motion.p custom={2} variants={fadeUp} initial="hidden" animate="visible"
@@ -634,7 +649,7 @@ function SlideTakeaway() {
   );
 }
 
-const slides = [SlidePlatform, SlideWhyImages, SlideWhyText, SlideHarness, SlideHarnessLego, SlideEvals, SlideTakeaway];
+const slides = [SlideHero, SlidePlatform, SlideWhyImages, SlideWhyText, SlideHarness, SlideEvals, SlideTakeaway];
 
 /* ──────────────────────── Main Component ──────────────────────── */
 
@@ -683,7 +698,6 @@ export function InfoSlideshow({ open, onClose }: InfoSlideshowProps) {
         >
           <div
             className="absolute inset-0 bg-background/90 backdrop-blur-xl"
-            onClick={onClose}
           />
 
           <button

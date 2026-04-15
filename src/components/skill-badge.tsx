@@ -30,8 +30,14 @@ export function SkillBadges({ debug, onBadgeClick }: SkillBadgeProps) {
       let color = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
 
       if (isKnowledgeBase) {
-        icon = "\u{1F50D}"; // magnifying glass
-        color = "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+        badges.push({
+          key: `rag-${tool.name}`,
+          label: "RAG",
+          icon: "\u{1F4DA}",
+          section: "rag",
+          color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+        });
+        return;
       } else if (isGoodyExclusive) {
         icon = "\u{1F49A}"; // green heart
         color = "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20";
@@ -42,7 +48,7 @@ export function SkillBadges({ debug, onBadgeClick }: SkillBadgeProps) {
 
       badges.push({
         key: `tool-${tool.name}`,
-        label: tool.name.replace(/_/g, " "),
+        label: tool.description || tool.name.replace(/_/g, " "),
         icon,
         section: "tools",
         color,

@@ -171,8 +171,8 @@ export function ObservabilityPanel({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <MetaCell label="Embedding model" value="text-embedding-3-small" mono />
                 <MetaCell label="Vector DB" value="Pinecone" mono />
-                <MetaCell label="Top-K" value="5" mono />
-                <MetaCell label="Min score threshold" value="0.3 (30%)" mono />
+                <MetaCell label="Top-K" value="3" mono />
+                <MetaCell label="Min score threshold" value="0.45" mono />
               </div>
             </div>
 
@@ -191,7 +191,7 @@ export function ObservabilityPanel({
             ) : (
               <div className="text-sm text-muted-foreground italic py-8 text-center">
                 {debug.ragEnabled
-                  ? "Query was sent but no chunks scored above 30% threshold"
+                  ? "Query was sent but no chunks scored above the similarity threshold"
                   : "RAG was skipped this turn (first turn or short message)"}
               </div>
             )}
@@ -474,8 +474,8 @@ function LLMMessageCard({ message, index }: { message: { role: string; content: 
 }
 
 function RagChunkCard({ chunk, index }: { chunk: { id: string; score: number; category: string; preview: string; fullText?: string }; index: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasMore = chunk.fullText && chunk.fullText.length > 100;
+  const [collapsed, setCollapsed] = useState(false);
+  const displayText = chunk.fullText || chunk.preview;
 
   return (
     <div className="bg-secondary/50 border border-purple-500/10 rounded-lg p-3">
@@ -484,26 +484,16 @@ function RagChunkCard({ chunk, index }: { chunk: { id: string; score: number; ca
           <span className="text-[10px] text-muted-foreground font-mono">#{index + 1}</span>
           <span className="text-xs text-purple-600 dark:text-purple-400 font-mono truncate">{chunk.id}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={cn(
-            "text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0",
-            chunk.score >= 0.8 ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-              : chunk.score >= 0.5 ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
-              : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-          )}>
-            {(chunk.score * 100).toFixed(1)}%
-          </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">INJECTED</span>
-        </div>
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">INJECTED</span>
       </div>
       <p className="text-[13px] text-foreground/80 leading-relaxed whitespace-pre-wrap">
-        {expanded && chunk.fullText ? chunk.fullText : chunk.preview}
+        {collapsed ? chunk.preview : displayText}
       </p>
       <div className="flex items-center justify-between mt-2">
         <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{chunk.category}</span>
-        {hasMore && (
-          <button onClick={() => setExpanded(!expanded)} className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline">
-            {expanded ? "Show less" : "Show full text"}
+        {chunk.fullText && chunk.fullText.length > 120 && (
+          <button onClick={() => setCollapsed(!collapsed)} className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline">
+            {collapsed ? "Show full text" : "Collapse"}
           </button>
         )}
       </div>
@@ -642,11 +632,11 @@ function McpTabContent({ mcpInfo, toolCalls }: { mcpInfo?: McpDebugInfo; toolCal
 }
 
 function TokenBar({ label, value, total, color }: {
-  label: string; value: number; total: number; color: "blue" | "purple" | "amber" | "emerald";
+  label: string; value: number; total: number; color: "blue" | "purple" | "amber" | "emerald" | "orange";
 }) {
   const percentage = total > 0 ? (value / total) * 100 : 0;
-  const colorClasses = { blue: "bg-blue-500", purple: "bg-purple-500", amber: "bg-amber-500", emerald: "bg-emerald-500" };
-  const textClasses = { blue: "text-blue-600 dark:text-blue-400", purple: "text-purple-600 dark:text-purple-400", amber: "text-amber-600 dark:text-amber-400", emerald: "text-emerald-600 dark:text-emerald-400" };
+  const colorClasses = { blue: "bg-blue-500", purple: "bg-purple-500", amber: "bg-amber-500", emerald: "bg-emerald-500", orange: "bg-orange-500" };
+  const textClasses = { blue: "text-blue-600 dark:text-blue-400", purple: "text-purple-600 dark:text-purple-400", amber: "text-amber-600 dark:text-amber-400", emerald: "text-emerald-600 dark:text-emerald-400", orange: "text-orange-600 dark:text-orange-400" };
 
   return (
     <div className="space-y-1">

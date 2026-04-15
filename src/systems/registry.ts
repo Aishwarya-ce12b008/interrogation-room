@@ -39,7 +39,7 @@ export interface SystemDefinition {
   };
 
   // Subject card rendering
-  subjectCardType?: "suspect" | "merchant";
+  subjectCardType?: "suspect" | "merchant" | "dispute";
 
   // Dashboard (KPI strip above chat)
   dashboard?: {

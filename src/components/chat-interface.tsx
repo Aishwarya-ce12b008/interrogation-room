@@ -6,6 +6,7 @@ import { ObservabilityPanel } from "@/components/observability-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SuspectCard } from "@/components/suspect-card";
 import { MerchantCard } from "@/components/merchant-card";
+import { DisputeCard } from "@/components/dispute-card";
 import { KpiStrip } from "@/components/kpi-strip";
 import { InlineSteps } from "@/components/inline-steps";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Send, Eye, EyeOff, ArrowRight, ChevronDown, ChevronUp, ArrowLeft } from
 import { type SystemDefinition, getSystem } from "@/systems/registry";
 import { type SuspectCardData } from "@/systems/interrogation/types";
 import { type MerchantCardData } from "@/systems/smb-analytics/types";
+import { type DisputeCardData } from "@/systems/chargeback-war-room/types";
 
 const CONTEXT_WINDOW_LIMIT = 128000;
 
@@ -192,7 +194,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
   const [allTurnDebug, setAllTurnDebug] = useState<MessageDebugInfo[]>([]);
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number>(0);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [subject, setSubject] = useState<SuspectCardData | MerchantCardData | null>(null);
+  const [subject, setSubject] = useState<SuspectCardData | MerchantCardData | DisputeCardData | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
   const [showCasePopover, setShowCasePopover] = useState(false);
@@ -335,7 +337,10 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
     setPendingSteps([]);
 
     let triggerMessage = `[SESSION START]`;
-    if (subject && system?.subjectCardType === "merchant") {
+    if (subject && system?.subjectCardType === "dispute") {
+      const d = subject as DisputeCardData;
+      triggerMessage = `[SESSION START] Dispute: ${d.razorpay_dispute_id} — ${d.reason_code} (${d.reason_description}), ₹${(d.amount / 100).toLocaleString("en-IN")} from ${d.merchant_name}`;
+    } else if (subject && system?.subjectCardType === "merchant") {
       triggerMessage = `[SESSION START] Business: ${subject.name}`;
     } else if (subject && "currentCrime" in subject) {
       triggerMessage = `[INTERROGATION START: Suspect ${subject.name} brought in for ${(subject as SuspectCardData).currentCrime}]`;
@@ -437,9 +442,12 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
   // --- Subject selection screen (for systems that have subjects) ---
   if (system.hasSubjects && !hasStarted) {
     const isMerchantSystem = system.subjectCardType === "merchant";
-    const subjectCards = (system.getSubjectCards?.() || []) as (SuspectCardData | MerchantCardData)[];
+    const isDisputeSystem = system.subjectCardType === "dispute";
+    const subjectCards = (system.getSubjectCards?.() || []) as (SuspectCardData | MerchantCardData | DisputeCardData)[];
 
-    const subjectDescription = isMerchantSystem
+    const subjectDescription = isDisputeSystem
+      ? `Select a ${system.subjectLabel || "dispute"} to investigate. Each has a unique reason code and evidence profile.`
+      : isMerchantSystem
       ? `Select a ${system.subjectLabel || "merchant"} to analyze their business data.`
       : `Pick a ${system.subjectLabel || "character"} to play as. Each one has a unique backstory and set of circumstances.`;
 
@@ -472,7 +480,11 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
               return (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {isMerchantSystem
+                    {isDisputeSystem
+                      ? (visibleCards as DisputeCardData[]).map((d, i) => (
+                          <DisputeCard key={d.id} dispute={d} index={i} selected={subject?.id === d.id} onClick={() => setSubject(d)} />
+                        ))
+                      : isMerchantSystem
                       ? (visibleCards as MerchantCardData[]).map((m, i) => (
                           <MerchantCard key={m.id} merchant={m} index={i} selected={subject?.id === m.id} onClick={() => setSubject(m)} />
                         ))
@@ -536,16 +548,19 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
           {subject && (
             <div className="relative">
               <button ref={caseButtonRef} onClick={() => setShowCasePopover(!showCasePopover)} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary hover:bg-accent text-sm text-muted-foreground transition-colors">
-                <span className="font-medium text-foreground">{subject.name}</span>
-                {system.subjectCardType !== "merchant" && <span className="text-muted-foreground/60">{subject.id}</span>}
+                <span className="font-medium text-foreground">
+                  {system.subjectCardType === "dispute" ? (subject as DisputeCardData).merchant_name : subject.name}
+                </span>
+                {system.subjectCardType === "dispute" && <span className="text-muted-foreground/60">{(subject as DisputeCardData).razorpay_dispute_id}</span>}
+                {system.subjectCardType !== "merchant" && system.subjectCardType !== "dispute" && <span className="text-muted-foreground/60">{subject.id}</span>}
                 <ChevronDown className="w-3 h-3" />
               </button>
-              {showCasePopover && system.subjectCardType !== "merchant" && "currentCrime" in subject && (
+              {showCasePopover && system.subjectCardType !== "merchant" && system.subjectCardType !== "dispute" && "currentCrime" in subject && (
                 <div className="absolute top-full left-0 mt-2 z-50 w-96">
                   <SuspectCard suspect={subject as SuspectCardData} />
                 </div>
               )}
-              {showCasePopover && system.dashboard && system.subjectCardType === "merchant" && (
+              {showCasePopover && system.dashboard && (system.subjectCardType === "merchant" || system.subjectCardType === "dispute") && (
                 <div className="absolute top-full left-0 mt-2 z-50">
                   <KpiStrip merchantCardId={subject.id} apiEndpoint={system.dashboard.apiEndpoint} />
                 </div>
@@ -602,6 +617,7 @@ export function ChatInterface({ systemId, onBack }: ChatInterfaceProps) {
                     role={message.role as "user" | "assistant"}
                     content={message.content}
                     agent={message.agent}
+                    agentName={system?.subjectCardType === "dispute" ? "Chargeback Resolver" : system?.subjectCardType === "merchant" && subject ? `${subject.name} Co-Pilot` : undefined}
                     debug={message.debug}
                     isStreaming={message.id === streamingMessageId}
                     onOpenDebug={message.debug ? () => handleMessageDebugClick(message.debug!) : undefined}

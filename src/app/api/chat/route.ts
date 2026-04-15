@@ -41,9 +41,9 @@ interface RetrievedChunk {
 async function retrieveContext(
   openai: OpenAI,
   query: string,
-  topK: number = 5
+  topK: number = 3,
+  metadataFilter?: Record<string, string>
 ): Promise<RetrievedChunk[]> {
-  // Skip RAG if Pinecone is not configured
   const pineconeKey = process.env.PINECONE_API_KEY;
   const indexName = process.env.PINECONE_INDEX_NAME || "interrogation-room";
   
@@ -55,7 +55,6 @@ async function retrieveContext(
   }
 
   try {
-    // Create embedding for the query
     console.log(`RAG: Creating embedding for: "${query.slice(0, 50)}..."`);
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
@@ -64,15 +63,19 @@ async function retrieveContext(
     const queryEmbedding = embeddingResponse.data[0].embedding;
     console.log(`RAG: Embedding created, length: ${queryEmbedding.length}`);
 
-    // Query Pinecone
     const pinecone = new Pinecone({ apiKey: pineconeKey });
     const index = pinecone.index(indexName);
 
-    console.log(`RAG: Querying Pinecone index "${indexName}"...`);
+    const filter = metadataFilter && Object.keys(metadataFilter).length > 0
+      ? metadataFilter
+      : undefined;
+
+    console.log(`RAG: Querying Pinecone index "${indexName}"${filter ? ` with filter: ${JSON.stringify(filter)}` : ""}...`);
     const results = await index.query({
       vector: queryEmbedding,
       topK,
       includeMetadata: true,
+      filter,
     });
     
     console.log(`RAG: Pinecone returned ${results.matches?.length || 0} matches`);
@@ -82,9 +85,8 @@ async function retrieveContext(
       });
     }
 
-    // Filter and format results (lowered threshold to 0.3)
     const filtered = results.matches
-      .filter((match) => (match.score || 0) >= 0.3)
+      .filter((match) => (match.score || 0) >= 0.45)
       .map((match) => ({
         id: match.id,
         text: (match.metadata?.text as string) || "",
@@ -92,7 +94,7 @@ async function retrieveContext(
         category: (match.metadata?.category as string) || "unknown",
       }));
     
-    console.log(`RAG: After filtering (>=0.3): ${filtered.length} chunks`);
+    console.log(`RAG: After filtering (>=0.45): ${filtered.length} chunks`);
     return filtered;
   } catch (error) {
     console.error("RAG retrieval error:", error);
@@ -197,6 +199,17 @@ const TOOL_LABELS: Record<string, string> = {
   record_milestone: "Saving to Agastya's milestone log",
   update_milestone: "Updating Agastya's milestone",
   search_milestones: "Searching Agastya's records",
+  // Chargeback War Room
+  get_dispute: "Loading dispute details",
+  get_transaction: "Pulling transaction data",
+  get_merchant: "Checking merchant profile",
+  get_shipping_info: "Checking shipping & delivery",
+  get_customer_comms: "Reviewing customer communications",
+  get_refund_policy: "Loading refund policy",
+  get_device_fingerprint: "Checking device fingerprint",
+  load_skill: "Loading dispute playbook",
+  search_past_wins: "Searching past winning cases",
+  submit_representment: "Submitting representment",
   // SMB Analytics
   get_revenue_summary: "Pulling revenue numbers",
   get_top_items: "Finding top selling items",
@@ -294,7 +307,7 @@ async function callAgentForDecision(
 ): Promise<{ response: AgentResponse; tokenUsage: TokenUsage; debug: MessageDebugInfo }> {
   const config = getAgentConfig(agent, system);
   const formattedMessages = formatMessagesForAgent(messages);
-  const model = "gpt-4.1-mini";
+  const model = "gpt-5.4-mini";
   const maxTokens = 2048;
   const timestamp = new Date().toISOString();
   const estimateTokens = (text: string) => Math.ceil(text.length / 4);
@@ -327,8 +340,8 @@ async function callAgentForDecision(
   const userText = (lastUserMsg?.content || "").toLowerCase();
   const wantsEmail = /email|mail|send|bhej/.test(userText);
   const wantsCalendar = /book|schedule|calendar|meeting|call\s+(with|set)|invite|block.*time|slot|milna|milte/.test(userText);
-  const agentTools = isSessionStart ? [] : allTools.filter((t: Record<string, unknown>) => {
-    const fn = t.function as { name?: string } | undefined;
+  const agentTools = isSessionStart ? [] : allTools.filter((t) => {
+    const fn = (t as { function?: { name?: string } }).function;
     if (fn?.name === "send_email" && !wantsEmail) return false;
     if (fn?.name === "book_calendar_event" && !wantsCalendar) return false;
     return true;
@@ -345,7 +358,7 @@ async function callAgentForDecision(
   const initialResponse = await openai.chat.completions.create({
     model,
     messages: baseMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
-    max_tokens: maxTokens,
+    max_completion_tokens: maxTokens,
     temperature: config.temperature,
     response_format: { type: "json_object" },
     tools: agentTools.length > 0 ? agentTools : undefined,
@@ -374,10 +387,11 @@ async function callAgentForDecision(
   const enrichedMessages: OAIMessage[] = [...baseMessages as OAIMessage[]];
   let totalUsage = initialResponse.usage;
 
-  const MAX_TOOL_ROUNDS = 5;
+  const MAX_TOOL_ROUNDS = 8;
   let currentResponse = initialResponse;
   let currentHasTools = hasTools;
   let roundIndex = 0;
+  const collectedRagChunks: RetrievedChunk[] = [];
 
   while (currentHasTools && roundIndex < MAX_TOOL_ROUNDS) {
     roundIndex++;
@@ -408,7 +422,12 @@ async function callAgentForDecision(
 
       let toolResult: string;
       if (isRag) {
-        const chunks = await retrieveContext(openai, toolArgs.query as string, 5);
+        const ragFilter: Record<string, string> = {};
+        if (subject && typeof subject === "object" && "name" in subject) {
+          ragFilter.merchantName = (subject as { name: string }).name;
+        }
+        const chunks = await retrieveContext(openai, toolArgs.query as string, 3, Object.keys(ragFilter).length > 0 ? ragFilter : undefined);
+        collectedRagChunks.push(...chunks);
         toolResult = chunks.length > 0
           ? buildContextString(chunks)
           : "No relevant information found in the knowledge base.";
@@ -467,7 +486,7 @@ async function callAgentForDecision(
     const nextResponse = await openai.chat.completions.create({
       model,
       messages: enrichedMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
-      max_tokens: maxTokens,
+      max_completion_tokens: maxTokens,
       temperature: config.temperature,
       response_format: { type: "json_object" },
       tools: agentTools,
@@ -537,8 +556,8 @@ async function callAgentForDecision(
     tokenUsage,
     debug: {
       agentId: agent, action: parsedResponse.action, transitionNote: parsedResponse.transitionNote, timestamp,
-      tokenUsage, tokenBreakdown: { basePromptTokens, suspectContextTokens, ragContextTokens: 0, toolDefinitionTokens, conversationTokens, completionTokens: tokenUsage.completionTokens },
-      messageCount: messages.length, toolCalls, llmCalls, ragChunks: [], ragEnabled: false,
+      tokenUsage, tokenBreakdown: { basePromptTokens, suspectContextTokens, ragContextTokens: collectedRagChunks.reduce((sum, c) => sum + estimateTokens(c.text), 0), toolDefinitionTokens, conversationTokens, completionTokens: tokenUsage.completionTokens },
+      messageCount: messages.length, toolCalls, llmCalls, ragChunks: collectedRagChunks.map(c => ({ id: c.id, score: c.score, category: c.category, preview: c.text.slice(0, 120) + (c.text.length > 120 ? "…" : ""), fullText: c.text })), ragEnabled: collectedRagChunks.length > 0,
       mcpInfo: buildMcpDebugInfo(mcpManager, toolCalls),
       systemPrompt: augmentedSystemPrompt, conversationHistory, model, temperature: config.temperature, maxTokens, promptSent: promptSummary,
     },
@@ -560,7 +579,7 @@ async function streamAgentResponse(
 ): Promise<{ response: AgentResponse; tokenUsage: TokenUsage; debug: MessageDebugInfo }> {
   const config = getAgentConfig(agent, system);
   const formattedMessages = formatMessagesForAgent(messages);
-  const model = "gpt-4.1-mini";
+  const model = "gpt-5.4-mini";
   const maxTokens = 2048;
   const timestamp = new Date().toISOString();
   const estimateTokens = (text: string) => Math.ceil(text.length / 4);
@@ -594,8 +613,8 @@ async function streamAgentResponse(
   const userText = (lastUserMsg?.content || "").toLowerCase();
   const wantsEmail = /email|mail|send|bhej/.test(userText);
   const wantsCalendar = /book|schedule|calendar|meeting|call\s+(with|set)|invite|block.*time|slot|milna|milte/.test(userText);
-  const agentTools = isSessionStart ? [] : allTools.filter((t: Record<string, unknown>) => {
-    const fn = t.function as { name?: string } | undefined;
+  const agentTools = isSessionStart ? [] : allTools.filter((t) => {
+    const fn = (t as { function?: { name?: string } }).function;
     if (fn?.name === "send_email" && !wantsEmail) return false;
     if (fn?.name === "book_calendar_event" && !wantsCalendar) return false;
     return true;
@@ -612,7 +631,7 @@ async function streamAgentResponse(
   const toolDetection = await openai.chat.completions.create({
     model,
     messages: streamMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
-    max_tokens: maxTokens,
+    max_completion_tokens: maxTokens,
     temperature: config.temperature,
     tools: agentTools.length > 0 ? agentTools : undefined,
   });
@@ -636,10 +655,11 @@ async function streamAgentResponse(
   })));
 
   let totalToolResultTokens = 0;
-  const MAX_TOOL_ROUNDS = 5;
+  const MAX_TOOL_ROUNDS = 8;
   let currentDetection = toolDetection;
   let currentHasTools = hasTools;
   let roundIndex = 0;
+  const collectedRagChunks: RetrievedChunk[] = [];
 
   while (currentHasTools && roundIndex < MAX_TOOL_ROUNDS) {
     roundIndex++;
@@ -670,7 +690,12 @@ async function streamAgentResponse(
 
       let toolResult: string;
       if (isRag) {
-        const chunks = await retrieveContext(openai, toolArgs.query as string, 5);
+        const ragFilter: Record<string, string> = {};
+        if (subject && typeof subject === "object" && "name" in subject) {
+          ragFilter.merchantName = (subject as { name: string }).name;
+        }
+        const chunks = await retrieveContext(openai, toolArgs.query as string, 3, Object.keys(ragFilter).length > 0 ? ragFilter : undefined);
+        collectedRagChunks.push(...chunks);
         toolResult = chunks.length > 0
           ? buildContextString(chunks)
           : "No relevant information found in the knowledge base.";
@@ -730,7 +755,7 @@ async function streamAgentResponse(
     const nextResponse = await openai.chat.completions.create({
       model,
       messages: streamMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
-      max_tokens: maxTokens,
+      max_completion_tokens: maxTokens,
       temperature: config.temperature,
       tools: agentTools,
     });
@@ -773,7 +798,7 @@ async function streamAgentResponse(
   const stream = await openai.chat.completions.create({
     model,
     messages: streamMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
-    max_tokens: maxTokens,
+    max_completion_tokens: maxTokens,
     temperature: config.temperature,
     response_format: { type: "json_object" },
     stream: true,
@@ -881,7 +906,7 @@ async function streamAgentResponse(
     tokenBreakdown: {
       basePromptTokens,
       suspectContextTokens,
-      ragContextTokens: 0,
+      ragContextTokens: collectedRagChunks.reduce((sum, c) => sum + estimateTokens(c.text), 0),
       toolDefinitionTokens,
       conversationTokens,
       completionTokens: tokenUsage.completionTokens,
@@ -889,8 +914,8 @@ async function streamAgentResponse(
     messageCount: messages.length,
     toolCalls,
     llmCalls,
-    ragChunks: [],
-    ragEnabled: false,
+    ragChunks: collectedRagChunks.map(c => ({ id: c.id, score: c.score, category: c.category, preview: c.text.slice(0, 120) + (c.text.length > 120 ? "…" : ""), fullText: c.text })),
+    ragEnabled: collectedRagChunks.length > 0,
     mcpInfo: buildMcpDebugInfo(mcpManager, toolCalls),
     systemPrompt: augmentedSystemPrompt,
     conversationHistory,

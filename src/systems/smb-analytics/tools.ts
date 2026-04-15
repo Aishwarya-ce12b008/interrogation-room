@@ -179,10 +179,11 @@ export const analyticsTools = [
     type: "function" as const,
     function: {
       name: "send_email",
-      description: "Email insights to the business owner. Use markdown formatting.",
+      description: "Email insights. Defaults to the business owner; pass 'to' to override.",
       parameters: {
         type: "object",
         properties: {
+          to: { type: "string", description: "Recipient email. Optional — defaults to the business owner. Use when the user specifies a different email." },
           subject: { type: "string", description: "Short, specific subject line." },
           body: { type: "string", description: "Markdown body — bullets for insights, tables for comparisons." },
         },
@@ -210,6 +211,20 @@ export const analyticsTools = [
           location: { type: "string", description: "Optional meeting location or video call link." },
         },
         required: ["title", "start_datetime", "attendees"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "search_knowledge_base",
+      description: "Search the business knowledge base for policies, store info, owner details, return/cancellation/warranty terms, and other non-numerical business information.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to look up — e.g. 'return policy', 'who is the owner', 'delivery terms', 'warranty'." },
+        },
+        required: ["query"],
       },
     },
   },
@@ -310,16 +325,23 @@ export async function executeTool(
       return fmt(await queryPriceTrends(merchantId, range, args.granularity as string | undefined));
     }
     case "send_email": {
+      const to = (args.to as string) || merchant.email;
       const subject = args.subject as string;
       const body = args.body as string;
       if (!subject || !body) return "Error: subject and body are required.";
       const result = await sendInsightEmail({
-        to: merchant.email,
+        to,
         merchantName: merchant.name,
         subject,
         body,
+        fallbackTo: merchant.email,
       });
-      if (result.success) return "Email sent successfully.";
+      if (result.success) {
+        if (result.sentTo !== to) {
+          return `Email sent successfully to ${result.sentTo} (redirected from ${to} due to email provider restrictions).`;
+        }
+        return `Email sent successfully to ${result.sentTo}.`;
+      }
       return `Error sending email: ${result.error}`;
     }
     case "book_calendar_event": {
